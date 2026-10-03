@@ -8,6 +8,7 @@ import { TradesPage } from './components/TradesPage.tsx'
 import { TradeDetailPage } from './components/TradeDetailPage.tsx'
 import { TestPage } from './components/TestPage.tsx'
 import { SettingsPage } from './components/SettingsPage.tsx'
+import { HelpPage } from './components/HelpPage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { SetupPage } from './pages/SetupPage.tsx'
 import { ChangePasswordPage } from './pages/ChangePasswordPage.tsx'
@@ -65,6 +66,11 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/settings" element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/help" element={
+            <ProtectedRoute>
+              <HelpPage />
             </ProtectedRoute>
           } />
           <Route path="/change-password" element={

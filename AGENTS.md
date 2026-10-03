@@ -13,6 +13,15 @@ This is the sanitized, public, single-owner version. Never copy private deployme
 - Base Compose uses external Postgres; the local overlay adds a private persistent Postgres service with a non-superuser application role.
 - `postgres/Dockerfile` copies the initialization script into the image with executable permissions. Do not bind-mount an executable initialization script from macOS; filesystem execution permissions can prevent first-run role creation.
 
+## User Help Guide Maintenance
+
+- Whenever a user-facing feature is added, changed, renamed, removed or fixed, update the in-app help guide in the same changeset before considering the task complete.
+- Guide content lives in `frontend/src/lib/helpGuide.ts`. Update the relevant topics, step-by-step instructions, search keywords, shortcuts and warnings to match the actual application behavior.
+- Keep descriptions of filters, defaults, calculations, matching rules, data limitations and destructive actions accurate. Remove obsolete instructions rather than leaving contradictory guidance.
+- When navigation or guide presentation changes, also update `frontend/src/components/HelpPage.tsx` and `frontend/src/components/UserMenu.tsx` as needed. Preserve access through the dashboard username menu on desktop and mobile.
+- Preserve public-specific first-user setup, single-owner, authentication, CSRF, TLS and database-configuration guidance when porting content from another edition. Never copy private deployment details or data into this guide.
+- Add or update the guide regression tests in `frontend/tests/` when affected, run `npm test` from `frontend/`, and verify the frontend build. Help-guide updates are part of feature completion, not a deferred documentation task.
+
 ## Verification
 
 - Backend: `.venv/bin/python -m pytest -q` after installing `backend/requirements-dev.txt`.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, RefreshCw, Coffee, Menu, X, Calendar, Settings, BarChart3, List, LogOut, Lock } from 'lucide-react';
+import { Upload, RefreshCw, Coffee, Menu, X, Calendar, BarChart3, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImportModal } from './ImportModal';
@@ -9,17 +9,8 @@ import { AccountMultiSelect } from './AccountMultiSelect';
 import { ThemeToggle } from './ThemeToggle';
 import { DatePicker } from './DatePicker';
 import { api } from '@/services/api';
-import { useAuth } from '@/context/AuthContext';
 import type { Account } from '@/types';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { UserMenu } from './UserMenu';
 
 export type Theme = 'java' | 'dark' | 'earth' | 'terminal' | 'tokyo';
 
@@ -80,7 +71,6 @@ export function Header({
   onAccountsChanged,
 }: HeaderProps) {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -89,7 +79,6 @@ export function Header({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempStartDate, setTempStartDate] = useState('');
   const [tempEndDate, setTempEndDate] = useState('');
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const hasInitializedSelection = useRef(false);
 
   useEffect(() => {
@@ -284,77 +273,18 @@ export function Header({
                 Refresh
               </Button>
               {/* User Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex items-center gap-2 ml-2"
-                  >
-                    <Avatar className="h-6 w-6">
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {user?.username?.charAt(0).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="hidden lg:inline max-w-[100px] truncate">
-                      {user?.username || 'User'}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{user?.username || 'User'}</p>
-                      <p className="text-xs leading-none text-muted-foreground">
-                        Logged in
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setIsAccountModalOpen(true)}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Manage Accounts
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsImportOpen(true)}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate('/settings')}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Tag Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/change-password')}>
-                    <Lock className="mr-2 h-4 w-4" />
-                    Change Password
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      setIsLoggingOut(true);
-                      try {
-                        await logout();
-                      } finally {
-                        setIsLoggingOut(false);
-                      }
-                    }}
-                    disabled={isLoggingOut}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    {isLoggingOut ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <LogOut className="mr-2 h-4 w-4" />
-                    )}
-                    {isLoggingOut ? 'Logging out...' : 'Logout'}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <UserMenu
+                onManageAccounts={() => setIsAccountModalOpen(true)}
+                onImportCSV={() => setIsImportOpen(true)}
+              />
             </div>
 
             {/* Mobile Menu Button */}
             <button
               className="md:hidden p-2"
+              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="dashboard-mobile-menu"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? (
@@ -367,7 +297,7 @@ export function Header({
 
           {/* Mobile Menu */}
           {mobileMenuOpen && (
-            <div className="md:hidden py-4 border-t border-border space-y-3">
+            <div id="dashboard-mobile-menu" className="md:hidden py-4 border-t border-border space-y-3">
               {/* Mobile Selectors */}
               <div className="px-2 space-y-2">
                 <AccountMultiSelect
@@ -484,6 +414,12 @@ export function Header({
                 <Upload className="h-4 w-4" />
                 Import CSV
               </Button>
+              <UserMenu
+                mobile
+                onManageAccounts={() => setIsAccountModalOpen(true)}
+                onImportCSV={() => setIsImportOpen(true)}
+                onMenuAction={() => setMobileMenuOpen(false)}
+              />
             </div>
           )}
         </div>

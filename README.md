@@ -98,6 +98,8 @@ Open `http://localhost:7080`. Enter the `SETUP_TOKEN` from your private `.env` f
 
 Create a trading account, select its broker format, and import an execution report. `examples/synthetic-ibkr.csv` contains deliberately synthetic data for trying the import flow.
 
+Open **User Help Guide** from the dashboard username menu for a searchable, in-app manual covering imports, matching, accounts, performance metrics, trades, executions, journals and troubleshooting. On mobile, open the hamburger menu first and then the username menu. The guide is available at `/help` after login.
+
 All trading APIs require a session. The frontend handles CSRF tokens automatically, including uploads. API integrations must retrieve `/api/auth/csrf` with a cookie jar and send its token as `X-CSRF-Token` on mutations. First-user setup additionally needs `X-Setup-Token`.
 
 ## Configuration reference
