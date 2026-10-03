@@ -188,6 +188,14 @@ export interface TagPnl {
   color: string;
 }
 
+export interface SortinoEquity {
+  start_date: string | null;
+  end_date: string | null;
+  opening_pnl: { account_id: number | null; net_pnl: number }[];
+  daily_pnl: { account_id: number | null; date: string; net_pnl: number }[];
+  daily_returns?: { account_id: number | null; date: string; net_pnl: number; tag_ids: number[] }[];
+}
+
 export interface DashboardData {
   overall: OverallStats;
   daily: DailyStats[];
@@ -201,6 +209,7 @@ export interface DashboardData {
   duration_pnl?: DurationPnl[];
   tag_pnl?: TagPnl[];
   last_execution_date?: string;
+  sortino_equity?: SortinoEquity;
 }
 
 export interface BrokerFormat {

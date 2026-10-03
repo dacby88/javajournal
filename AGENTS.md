@@ -22,6 +22,14 @@ This is the sanitized, public, single-owner version. Never copy private deployme
 - Preserve public-specific first-user setup, single-owner, authentication, CSRF, TLS and database-configuration guidance when porting content from another edition. Never copy private deployment details or data into this guide.
 - Add or update the guide regression tests in `frontend/tests/` when affected, run `npm test` from `frontend/`, and verify the frontend build. Help-guide updates are part of feature completion, not a deferred documentation task.
 
+## Sortino Benchmark Calculation
+
+- Account `sortino_target_mode=percent` stores an annual percentage, not a daily percentage. Existing numeric percentage settings are reinterpreted as annual; do not automatically compound old saved values into a new stored annual number.
+- The daily rate is `(1 + annual_percent / 100)^(1 / 252) - 1`. Apply it to beginning-of-day account equity: configured starting value plus all prior closed-trade net P&L, including P&L before the reporting window and trades excluded by card tag filters.
+- `backend/sortino_equity.py` supplies account opening P&L and daily realized P&L through the dashboard response. `frontend/src/lib/sortino.ts` calculates the tag-filtered, closing-date daily ratio and validates account settings. Open marks and cash transfers are not included in this equity series.
+- Sum individual account dollar benchmarks for multi-account views. Fixed-dollar targets remain daily, zero targets are valid, and the displayed ratio remains nonannualized.
+- No schema migration is required: settings are existing JSON fields and equity data is derived from existing trades. Update both help-guide metric topics when changing this behavior.
+
 ## Verification
 
 - Backend: `.venv/bin/python -m pytest -q` after installing `backend/requirements-dev.txt`.

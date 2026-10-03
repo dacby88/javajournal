@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { api } from '@/services/api';
+import { parseSortinoSettings } from '@/lib/sortino';
 import type { Account, ImportHistory, BrokerFormat, BrokerImportMapping } from '@/types';
 import { formatDateTime } from '@/lib/utils';
 import { BrokerImportMappingModal } from './BrokerImportMappingModal';
@@ -217,13 +218,7 @@ export function AccountManagementModal({ isOpen, onClose, onAccountsChanged }: A
         broker_import_mapping_id: formData.broker_import_mapping_id ? parseInt(formData.broker_import_mapping_id) : undefined,
         account_number: formData.account_number,
         timezone: formData.timezone,
-        settings: {
-          sortino_target: parseFloat(formData.sortino_target) || 1000,
-          sortino_target_mode: formData.sortino_target_mode,
-          ...(formData.starting_account_value
-            ? { starting_account_value: parseFloat(formData.starting_account_value) }
-            : {}),
-        },
+        settings: parseSortinoSettings(formData),
       };
       await api.createAccount(data);
       resetForm();
@@ -254,13 +249,7 @@ export function AccountManagementModal({ isOpen, onClose, onAccountsChanged }: A
         account_number: formData.account_number,
         timezone: formData.timezone,
         is_active: formData.is_active,
-        settings: {
-          sortino_target: parseFloat(formData.sortino_target) || 1000,
-          sortino_target_mode: formData.sortino_target_mode,
-          ...(formData.starting_account_value
-            ? { starting_account_value: parseFloat(formData.starting_account_value) }
-            : {}),
-        },
+        settings: parseSortinoSettings(formData),
       };
       await api.updateAccount(isEditing.id, data);
       resetForm();
@@ -545,33 +534,34 @@ export function AccountManagementModal({ isOpen, onClose, onAccountsChanged }: A
                       className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      Used as the equity base for Sharpe ratio calculations and percentage-based Sortino targets
+                      Equity before your imported history. Annual Sortino benchmarks use this value plus cumulative realized account P&L.
                     </p>
                   </div>
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1">
-                      Sortino Ratio Target ({formData.sortino_target_mode === 'percent' ? '% of account value/day' : '$/day'})
+                      Sortino Ratio Benchmark ({formData.sortino_target_mode === 'percent' ? 'annual %' : '$/day'})
                     </label>
                     <div className="flex gap-2">
                       <input
                         type="number"
                         value={formData.sortino_target}
+                        step="0.01"
                         onChange={(e) => setFormData({ ...formData, sortino_target: e.target.value })}
                         placeholder={formData.sortino_target_mode === 'percent' ? '1' : '1000'}
                         className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <select
                         value={formData.sortino_target_mode}
-                        onChange={(e) => setFormData({ ...formData, sortino_target_mode: e.target.value as 'fixed' | 'percent' })}
+                        onChange={(e) => setFormData({ ...formData, sortino_target_mode: e.target.value as 'fixed' | 'percent', sortino_target: e.target.value === 'percent' ? '1' : '1000' })}
                         className="px-2 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
                       >
                         <option value="fixed">Fixed $</option>
-                        <option value="percent">% of account</option>
+                        <option value="percent">Annual %</option>
                       </select>
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       {formData.sortino_target_mode === 'percent'
-                        ? 'Daily P&L target as a percentage of the starting account value (requires a starting account value)'
+                        ? 'Annual return benchmark, compounded to a daily rate over 252 trading days and applied to starting value plus prior realized P&L. Requires a positive starting value.'
                         : 'Daily P&L target for Sortino ratio calculation'}
                     </p>
                   </div>

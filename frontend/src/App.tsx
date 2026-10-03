@@ -10,6 +10,7 @@ import { api } from '@/services/api';
 import type { DashboardData, OverallStats, DailyStats, DailyJournal, Trade, TradeTag, Account, Execution } from '@/types';
 import { AlertCircle, Eye, EyeOff, Settings2, Info, ChevronLeft, ChevronRight, ExternalLink, Settings, CalendarDays, CalendarRange } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { calculateSortinoStats } from '@/lib/sortino';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -185,7 +186,7 @@ function App() {
   // Fetch accounts for account-specific settings
   const loadAccounts = useCallback(async () => {
     try {
-      const response = await api.getAccounts();
+      const response = await api.getAccounts(true);
       if (response.success) {
         setAccounts(response.data);
       }
@@ -462,122 +463,9 @@ function App() {
   }, [allTrades, cardTagSettings, stats]);
 
   // Calculate Sortino Ratio from filtered trades (grouped by day)
-  const sortinoStats = useMemo(() => {
-    // Get the Sortino targets for the selected accounts, defaulting to 1000 each.
-    // In 'percent' mode the target is a % of that account's starting value.
-    // With several accounts selected the targets are summed so the ratio is
-    // measured against the combined capital base.
-    const selectedAccountData = accounts.filter((a) => selectedAccounts.includes(a.id));
-    const dailyTarget = selectedAccountData.length === 0
-      ? 1000
-      : selectedAccountData.reduce((sum, a) => {
-          const settings = a.settings;
-          if (settings?.sortino_target_mode === 'percent' && settings.starting_account_value) {
-            return sum + (settings.starting_account_value * (settings.sortino_target ?? 1)) / 100;
-          }
-          return sum + (settings?.sortino_target ?? 1000);
-        }, 0);
-
-    console.log('Sortino Debug - Selected accounts:', selectedAccounts);
-    console.log('Sortino Debug - Daily Target:', dailyTarget);
-    console.log('Sortino Debug - All trades count:', allTrades.length);
-    console.log('Sortino Debug - Selected tag IDs:', cardTagSettings.selectedTagIds);
-    console.log('Sortino Debug - Include untagged:', cardTagSettings.includeUntagged);
-    
-    // Filter trades based on card tag settings
-    const filteredTrades = allTrades.filter(trade => {
-      const tradeTagIds = trade.tags?.map(t => t.id) || [];
-      const hasSelectedTag = cardTagSettings.selectedTagIds.some(id => tradeTagIds.includes(id));
-      const isUntagged = tradeTagIds.length === 0;
-      
-      if (isUntagged) {
-        return cardTagSettings.includeUntagged;
-      }
-      
-      return hasSelectedTag;
-    });
-    
-    console.log('Sortino Debug - Filtered trades count:', filteredTrades.length);
-    console.log('Sortino Debug - Filtered trades PnLs:', filteredTrades.map(t => ({ pnl: t.net_pnl, date: t.trade_date || t.entry_date })));
-    
-    if (filteredTrades.length === 0) {
-      return {
-        sortino_ratio: stats.sortino_ratio,
-        avgDailyReturn: 0,
-        downsideRisk: 0,
-        daysTraded: 0,
-      };
-    }
-    
-    // Group trades by day and calculate daily P&L totals
-    const dailyPnLMap = new Map<string, number>();
-    filteredTrades.forEach(trade => {
-      // Try multiple date fields and formats
-      let dateKey = trade.trade_date;
-      if (!dateKey && trade.entry_date) {
-        // Handle both ISO format and simple date format
-        dateKey = trade.entry_date.split('T')[0];
-      }
-      if (!dateKey && trade.exit_date) {
-        dateKey = trade.exit_date.split('T')[0];
-      }
-      if (!dateKey) return;
-      
-      const existing = dailyPnLMap.get(dateKey) || 0;
-      dailyPnLMap.set(dateKey, existing + (trade.net_pnl || 0));
-    });
-    
-    const dailyReturns = Array.from(dailyPnLMap.values());
-    
-    if (dailyReturns.length === 0) {
-      return {
-        sortino_ratio: 0,
-        avgDailyReturn: 0,
-        downsideRisk: 0,
-        daysTraded: 0,
-      };
-    }
-    
-    // Debug logging
-    console.log('Sortino Debug - Daily PnL Map:', Array.from(dailyPnLMap.entries()));
-    console.log('Sortino Debug - Daily Returns:', dailyReturns);
-    console.log(`Sortino Debug - Days below $${dailyTarget}:`, dailyReturns.filter(pnl => pnl < dailyTarget));
-    console.log(`Sortino Debug - Days above $${dailyTarget}:`, dailyReturns.filter(pnl => pnl >= dailyTarget));
-    console.log('Sortino Debug - Downside squared deviations:', dailyReturns
-      .filter(dailyPnL => dailyPnL < dailyTarget)
-      .map(dailyPnL => Math.pow(dailyTarget - dailyPnL, 2)));
-    console.log('Sortino Debug - Target check:', dailyReturns.map(pnl => ({ pnl, belowTarget: pnl < dailyTarget })));
-    
-    // Calculate average daily return
-    const avgDailyReturn = dailyReturns.reduce((sum, pnl) => sum + pnl, 0) / dailyReturns.length;
-    
-    // Calculate downside deviation based on daily returns vs $1000 target
-    // For each day below target, calculate (target - dailyPnL)^2
-    const downsideSquaredDeviations = dailyReturns
-      .filter(dailyPnL => dailyPnL < dailyTarget)
-      .map(dailyPnL => Math.pow(dailyTarget - dailyPnL, 2));
-    
-    // Downside variance = sum of squared deviations / total number of days
-    const downsideVariance = downsideSquaredDeviations.length > 0
-      ? downsideSquaredDeviations.reduce((sum, val) => sum + val, 0) / dailyReturns.length
-      : 0;
-    
-    // Downside deviation = square root of variance
-    const downsideDeviation = Math.sqrt(downsideVariance);
-    
-    // Sortino Ratio = (Average Daily Return - Daily Target) / Downside Deviation
-    const sortino_ratio = downsideDeviation > 0 
-      ? (avgDailyReturn - dailyTarget) / downsideDeviation 
-      : 0;
-    
-    return {
-      sortino_ratio,
-      avgDailyReturn,
-      downsideRisk: downsideDeviation,
-      daysTraded: dailyReturns.length,
-      dailyTarget,
-    };
-  }, [allTrades, cardTagSettings, stats, accounts, selectedAccounts]);
+  const sortinoStats = useMemo(() => calculateSortinoStats(
+    allTrades, accounts, selectedAccounts, cardTagSettings, data?.sortino_equity,
+  ), [allTrades, accounts, selectedAccounts, cardTagSettings, data?.sortino_equity]);
 
   // Prepare intraday activity data from filtered trades
   const hourlyData = useMemo(() => {
@@ -1336,8 +1224,8 @@ function App() {
           <CardWrapper cardKey="sortino" className="w-full lg:w-[calc(33.333%-11px)]">
             <MetricCard
               title="Sortino Ratio"
-              value={sortinoStats.sortino_ratio.toFixed(2)}
-              tooltip="Downside risk-adjusted return"
+              value={sortinoStats.error ? '—' : sortinoStats.sortino_ratio.toFixed(2)}
+              tooltip="Daily P&L versus each account's benchmark. Annual percentages are compounded into daily rates over 252 trading days and applied to starting value plus prior realized P&L. The displayed ratio is not annualized."
               valueClassName={sortinoStats.sortino_ratio > 2 ? 'text-profit' : 'text-muted-foreground'}
               headerAction={
                 <button
@@ -1358,14 +1246,15 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Target</div>
-                      <div className="text-sm font-medium">{formatCurrency(sortinoStats.dailyTarget || 1000)}</div>
+                      <div className="text-xs text-muted-foreground">Avg Daily Target</div>
+                      <div className="text-sm font-medium">{sortinoStats.error ? '—' : formatCurrency(sortinoStats.dailyTarget)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Downside Dev</div>
                       <div className="text-sm font-medium">{formatCurrency(sortinoStats.downsideRisk)}</div>
                     </div>
                   </div>
+                  {sortinoStats.error && <p role="status" className="mb-3 text-xs text-amber-600 dark:text-amber-400">{sortinoStats.error}</p>}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>Poor</span>
                     <span>Fair</span>
@@ -1375,7 +1264,7 @@ function App() {
                   <div className="mt-1 h-2 bg-secondary rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-primary progress-bar"
-                      style={{ width: `${Math.min((sortinoStats.sortino_ratio / 4) * 100, 100)}%` }}
+                      style={{ width: `${Math.max(0, Math.min((sortinoStats.sortino_ratio / 4) * 100, 100))}%` }}
                     />
                   </div>
                 </div>

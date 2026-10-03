@@ -21,6 +21,7 @@ from csv_processor import (
     _determine_trade_side
 )
 from auth import auth_bp
+from sortino_equity import get_sortino_equity
 from config import configure_app
 from security import install_security
 from database import SCHEMA_REVISION
@@ -3205,7 +3206,12 @@ def get_dashboard_data():
                 'symbol_pnl': symbol_pnl,
                 'trade_pnl_by_hour': trade_pnl_by_hour,
                 'open_trades': open_positions,  # Already a list of dicts
-                'last_execution_date': last_execution_date
+                'last_execution_date': last_execution_date,
+                'sortino_equity': get_sortino_equity(
+                    account_ids,
+                    stats_start_date if use_date_filter else None,
+                    datetime.fromisoformat(end_date_str).date() if end_date_str else None,
+                )
             }
         })
     except Exception as e:
