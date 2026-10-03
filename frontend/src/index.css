@@ -1,0 +1,377 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* All themes are dark: force native controls (select dropdowns, options,
+       scrollbars) to render dark regardless of browser/OS theme setting */
+    color-scheme: dark;
+
+    --background: 220 15% 8%;
+    --foreground: 0 0% 95%;
+    --card: 220 15% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 15% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 142 76% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 60%;
+    --accent: 220 15% 15%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 142 76% 45%;
+    --radius: 0.5rem;
+    
+    /* Trading specific colors */
+    --profit: 142 76% 45%;
+    --loss: 0 84% 60%;
+    --neutral: 220 10% 60%;
+  }
+
+  /* Earth Tones Theme */
+  [data-theme="earth"] {
+    --background: 30 20% 15%;
+    --foreground: 35 20% 90%;
+    --card: 30 18% 18%;
+    --card-foreground: 35 20% 90%;
+    --popover: 30 18% 18%;
+    --popover-foreground: 35 20% 90%;
+    --primary: 35 40% 45%;
+    --primary-foreground: 35 20% 95%;
+    --secondary: 30 15% 22%;
+    --secondary-foreground: 35 20% 90%;
+    --muted: 30 12% 25%;
+    --muted-foreground: 30 10% 55%;
+    --accent: 25 35% 40%;
+    --accent-foreground: 35 20% 95%;
+    --destructive: 0 50% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 12% 28%;
+    --input: 30 12% 28%;
+    --ring: 35 40% 45%;
+    --radius: 0.5rem;
+    
+    /* Trading specific colors - earth tone variants */
+    --profit: 120 25% 40%;
+    --loss: 0 45% 55%;
+    --neutral: 30 10% 50%;
+  }
+
+  /* Java Theme - Coffee tones */
+  [data-theme="java"] {
+    --background: 30 20% 5%;
+    --foreground: 33 50% 78%;
+    --card: 30 25% 8%;
+    --card-foreground: 33 50% 78%;
+    --popover: 30 25% 8%;
+    --popover-foreground: 33 50% 78%;
+    --primary: 27 44% 35%;
+    --primary-foreground: 30 20% 5%;
+    --secondary: 29 33% 19%;
+    --secondary-foreground: 33 50% 78%;
+    --muted: 29 33% 19%;
+    --muted-foreground: 32 44% 60%;
+    --accent: 27 44% 35%;
+    --accent-foreground: 30 20% 5%;
+    --destructive: 5 55% 45%;
+    --destructive-foreground: 33 50% 78%;
+    --border: 29 33% 22%;
+    --input: 30 25% 10%;
+    --ring: 27 44% 35%;
+    --radius: 0.5rem;
+    
+    /* Trading specific colors - Java coffee palette */
+    --profit: 40 70% 55%;
+    --loss: 5 60% 50%;
+    --neutral: 32 44% 60%;
+  }
+
+  /* Terminal Theme - Orange on Black (#FFB100) */
+  [data-theme="terminal"] {
+    --background: 0 0% 5%;
+    --foreground: 42 100% 50%;
+    --card: 0 0% 8%;
+    --card-foreground: 42 100% 50%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 42 100% 50%;
+    --primary: 42 100% 50%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 42 100% 50%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 42 80% 45%;
+    --accent: 42 100% 50%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 42 100% 50%;
+    --input: 42 100% 30%;
+    --ring: 42 100% 50%;
+    --radius: 0.25rem;
+    
+    /* Trading specific colors - Terminal style (#FFB100) */
+    --profit: 42 100% 50%;
+    --loss: 0 70% 50%;
+    --neutral: 42 80% 40%;
+  }
+
+  /* Tokyo Theme - Neon cyan on dark */
+  [data-theme="tokyo"] {
+    --background: 220 30% 5%;
+    --foreground: 180 80% 92%;
+    --card: 220 25% 8%;
+    --card-foreground: 180 70% 90%;
+    --popover: 220 25% 8%;
+    --popover-foreground: 180 70% 90%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 220 30% 5%;
+    --secondary: 220 25% 12%;
+    --secondary-foreground: 180 60% 88%;
+    --muted: 220 25% 12%;
+    --muted-foreground: 180 50% 75%;
+    --accent: 180 100% 50%;
+    --accent-foreground: 220 30% 5%;
+    --destructive: 330 100% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 180 100% 50%;
+    --input: 220 25% 12%;
+    --ring: 180 100% 50%;
+    --radius: 0.5rem;
+    
+    /* Trading specific colors - neon variants */
+    --profit: 120 100% 55%;
+    --loss: 330 100% 60%;
+    --neutral: 180 50% 75%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Profit/Loss colors */
+.text-profit {
+  color: hsl(var(--profit));
+}
+
+.text-loss {
+  color: hsl(var(--loss));
+}
+
+.bg-profit {
+  background-color: hsl(var(--profit));
+}
+
+.bg-loss {
+  background-color: hsl(var(--loss));
+}
+
+.bg-profit\/10 {
+  background-color: hsl(var(--profit) / 0.1);
+}
+
+.bg-loss\/10 {
+  background-color: hsl(var(--loss) / 0.1);
+}
+
+.border-profit {
+  border-color: hsl(var(--profit));
+}
+
+.border-loss {
+  border-color: hsl(var(--loss));
+}
+
+/* Card hover effect */
+.metric-card {
+  @apply transition-all duration-200;
+}
+
+.metric-card:hover {
+  @apply border-primary/50;
+}
+
+/* Calendar day styles */
+.calendar-day {
+  @apply relative flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-150 cursor-pointer;
+}
+
+.calendar-day:hover {
+  @apply bg-secondary;
+}
+
+.calendar-day.profit {
+  background-color: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.calendar-day.loss {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.calendar-day.open {
+  background-color: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* Progress bar animation */
+@keyframes progress-fill {
+  from {
+    width: 0%;
+  }
+}
+
+.progress-bar {
+  animation: progress-fill 0.5s ease-out forwards;
+}
+
+/* Streak indicator */
+.streak-dot {
+  @apply w-2 h-2 rounded-full;
+}
+
+.streak-dot.win {
+  @apply bg-profit;
+}
+
+.streak-dot.loss {
+  @apply bg-loss;
+}
+
+/* Tooltip */
+.tooltip {
+  @apply invisible opacity-0 absolute z-50 px-2 py-1 text-xs bg-popover text-popover-foreground rounded shadow-lg transition-all duration-150;
+}
+
+.has-tooltip:hover .tooltip {
+  @apply visible opacity-100;
+}
+
+/* Recharts bar hover - remove white highlight */
+.recharts-bar-rectangle:hover {
+  opacity: 0.85;
+}
+
+.recharts-active-bar {
+  fill-opacity: 0.85 !important;
+}
+
+/* Hide the tooltip cursor background highlight */
+.recharts-tooltip-cursor {
+  fill: transparent !important;
+}
+
+.recharts-rectangle.recharts-tooltip-cursor,
+.recharts-layer.recharts-tooltip-cursor rect {
+  fill: transparent !important;
+}
+
+
+
+
+
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Glass effect for modal */
+.glass {
+  @apply bg-background/80 backdrop-blur-sm;
+}
+
+/* Chart container */
+.chart-container {
+  @apply relative w-full h-full;
+}
+
+/* Table styles */
+.data-table th {
+  @apply text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4;
+}
+
+.data-table td {
+  @apply py-3 px-4 text-sm;
+}
+
+.data-table tr:hover {
+  @apply bg-secondary/50;
+}
+
+/* Input focus */
+input:focus, textarea:focus, select:focus {
+  @apply outline-none ring-2 ring-primary/50;
+}
+
+/* Button variants */
+.btn-primary {
+  @apply bg-primary text-primary-foreground hover:bg-primary/90;
+}
+
+.btn-secondary {
+  @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+}
+
+.btn-destructive {
+  @apply bg-destructive text-destructive-foreground hover:bg-destructive/90;
+}
+
+/* Badge styles */
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+
+.badge-profit {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: rgb(34, 197, 94);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge-loss {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: rgb(239, 68, 68);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-neutral {
+  @apply bg-muted text-muted-foreground;
+}

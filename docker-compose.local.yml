@@ -1,0 +1,38 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: postgres/Dockerfile
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD for the local administrator}
+      APP_DB_NAME: ${PG_DBNAME:-javajournal}
+      APP_DB_USER: ${PG_USER:-javajournal}
+      APP_DB_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD for the application role}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$APP_DB_USER" -d "$$APP_DB_NAME"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+  initialize:
+    environment:
+      DB_MODE: local
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_SSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+  backend:
+    environment:
+      DB_MODE: local
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_SSLMODE: disable
+
+volumes:
+  postgres-data:

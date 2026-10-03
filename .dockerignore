@@ -1,0 +1,6 @@
+**
+!postgres/
+!postgres/Dockerfile
+!scripts/
+!scripts/postgres-init.sh
+!LICENSE

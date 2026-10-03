@@ -1,0 +1,50 @@
+name: javajournal
+
+x-backend: &backend
+  build:
+    context: ./backend
+  environment: &backend-env
+    DB_MODE: external
+    DATABASE_URL: ${DATABASE_URL:-}
+    PG_HOST: ${PG_HOST:-}
+    PG_PORT: ${PG_PORT:-5432}
+    PG_DBNAME: ${PG_DBNAME:-javajournal}
+    PG_USER: ${PG_USER:-javajournal}
+    PG_PASSWORD: ${PG_PASSWORD:-}
+    PG_SSLMODE: ${PG_SSLMODE:-}
+    PG_SSLROOTCERT: ${PG_SSLROOTCERT:-}
+    SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a generated secret of at least 32 characters}
+    SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN to a generated secret of at least 32 characters}
+    SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    APP_TRUSTED_HOSTS: ${APP_TRUSTED_HOSTS:-localhost,127.0.0.1,[::1]}
+  volumes:
+    - ./certs:/certs:ro
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  initialize:
+    <<: *backend
+    command: [python, database.py, init]
+    restart: "no"
+  backend:
+    <<: *backend
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:7777/api/ready', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${APP_HOST:-127.0.0.1}:${APP_PORT:-7080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

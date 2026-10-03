@@ -1,0 +1,11 @@
+.env*
+*.db
+*.sqlite*
+*.dump
+*.pem
+*.key
+__pycache__
+*.py[cod]
+.venv
+.pytest_cache
+tests
