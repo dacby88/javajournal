@@ -30,6 +30,12 @@ This is the sanitized, public, single-owner version. Never copy private deployme
 - Sum individual account dollar benchmarks for multi-account views. Fixed-dollar targets remain daily, zero targets are valid, and the displayed ratio remains nonannualized.
 - No schema migration is required: settings are existing JSON fields and equity data is derived from existing trades. Update both help-guide metric topics when changing this behavior.
 
+## Account Selector Name Privacy
+
+- `frontend/src/lib/accountNamePrivacy.ts` stores the optional selector-only name masking preference in browser localStorage under `account_names_obfuscated`. Shared selectors subscribe to same-page and cross-tab changes with `useSyncExternalStore`.
+- Masked names show up to three characters followed by exactly five asterisks in dropdown rows and single-account trigger labels. Never mutate account names, selected IDs, search data or API/export values for this display preference.
+- Regression coverage is in `frontend/tests/account-name-privacy.test.mjs`; run it through `npm test` from `frontend/`.
+
 ## Verification
 
 - Backend: `.venv/bin/python -m pytest -q` after installing `backend/requirements-dev.txt`.

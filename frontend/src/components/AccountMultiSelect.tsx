@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronDown, Wallet, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatAccountName, getAccountNameObfuscation, setAccountNameObfuscation, subscribeAccountNameObfuscation } from '@/lib/accountNamePrivacy';
 import type { Account } from '@/types';
 
 interface AccountMultiSelectProps {
@@ -21,10 +22,11 @@ interface AccountMultiSelectProps {
   align?: 'start' | 'center' | 'end';
 }
 
-function summarize(accounts: Account[], selected: number[]): string {
+function summarize(accounts: Account[], selected: number[], obfuscate: boolean): string {
   if (selected.length === 0) return 'All Accounts';
   if (selected.length === 1) {
-    return accounts.find((a) => a.id === selected[0])?.name ?? '1 account';
+    const account = accounts.find((a) => a.id === selected[0]);
+    return account ? formatAccountName(account.name, obfuscate) : '1 account';
   }
   return `${selected.length} accounts`;
 }
@@ -42,6 +44,8 @@ export function AccountMultiSelect({
 }: AccountMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const privacyId = useId();
+  const obfuscateNames = useSyncExternalStore(subscribeAccountNameObfuscation, getAccountNameObfuscation, getAccountNameObfuscation);
 
   const visibleAccounts = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -67,7 +71,7 @@ export function AccountMultiSelect({
   const clearAll = () => onChange([]);
 
   const allSelected = accounts.length > 0 && selected.length === accounts.length;
-  const label = summarize(accounts, selected);
+  const label = summarize(accounts, selected, obfuscateNames);
 
   return (
     <Popover
@@ -116,6 +120,15 @@ export function AccountMultiSelect({
           />
         </div>
 
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <Checkbox
+            id={privacyId}
+            checked={obfuscateNames}
+            onCheckedChange={(checked) => setAccountNameObfuscation(checked === true)}
+          />
+          <label htmlFor={privacyId} className="cursor-pointer text-xs">Obfuscate account names</label>
+        </div>
+
         <div className="flex items-center justify-between border-b border-border px-2 py-1.5">
           <Button
             variant="ghost"
@@ -158,7 +171,7 @@ export function AccountMultiSelect({
                     aria-hidden
                     className="pointer-events-none"
                   />
-                  <span className="flex-1 truncate">{account.name}</span>
+                  <span className="flex-1 truncate">{formatAccountName(account.name, obfuscateNames)}</span>
                   {!account.is_active && (
                     <span className="text-[10px] uppercase text-muted-foreground">
                       Inactive
