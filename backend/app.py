@@ -13,7 +13,7 @@ import io
 import pandas as pd
 import numpy as np
 
-from models import db, Execution, Trade, Position, DailyStats, OverallStats, HourlyStats, Tag, trade_tags, Account, ImportHistory, BrokerFormat, BrokerImportMapping
+from models import db, Execution, Trade, Position, DailyStats, OverallStats, HourlyStats, Tag, trade_tags, Account, ImportHistory, BrokerFormat, BrokerImportMapping, DailyJournal, EventTag
 from stats_calculator import recalculate_all_stats, calculate_overall_stats, calculate_daily_stats, compute_sharpe_ratio
 from csv_processor import (
     process_java_journal_csv, process_executions_into_trades, process_csv_with_format,
@@ -4116,61 +4116,6 @@ def set_trade_tags(trade_id):
 
 
 # ==================== Journal Routes ====================
-
-class DailyJournal(db.Model):
-    __tablename__ = 'daily_journals'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False, unique=True, index=True)
-    content = db.Column(db.Text)
-    content_text = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'date': self.date.isoformat() if self.date else None,
-            'content': self.content,
-            'content_text': self.content_text,
-            'event_tags': [t.to_dict() for t in self.event_tags_list] if hasattr(self, 'event_tags_list') else [],
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
-
-
-# Event Tag association table for daily journals
-journal_event_tags = db.Table('journal_event_tags',
-    db.Column('journal_id', db.Integer, db.ForeignKey('daily_journals.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('event_tag_id', db.Integer, db.ForeignKey('event_tags.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('created_at', db.DateTime, default=datetime.utcnow)
-)
-
-
-class EventTag(db.Model):
-    """Event tags for daily journals (Eco Data/News)"""
-    __tablename__ = 'event_tags'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
-    color = db.Column(db.String(7), default='#3b82f6')
-    description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationship to journals
-    journals = db.relationship('DailyJournal', secondary=journal_event_tags, backref='event_tags_list')
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'color': self.color,
-            'description': self.description,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
-
 
 @app.route('/api/journals', methods=['GET'])
 def get_journals():

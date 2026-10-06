@@ -1,9 +1,11 @@
 import pytest
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
 from sqlalchemy import create_engine, inspect, select, text
 
 from config import database_url
 from database import initialize, SCHEMA_REVISION
-from models import BrokerFormat
+from models import BrokerFormat, db
 
 
 def settings(**extra):
@@ -66,4 +68,18 @@ def test_migrations_and_seed_are_repeatable_and_preserve_data():
         assert connection.execute(text('SELECT username FROM users')).scalar() == 'synthetic_owner'
         assert len(connection.execute(select(BrokerFormat.__table__.c.id)).all()) == 3
     assert 'ck_users_single_owner' in {item['name'] for item in inspect(engine).get_check_constraints('users')}
+    engine.dispose()
+
+
+def test_initial_migration_matches_every_model_table():
+    engine = create_engine('sqlite:///:memory:')
+    initialize(engine)
+    with engine.connect() as connection:
+        reflected = set(inspect(connection).get_table_names())
+        assert set(db.metadata.tables) <= reflected
+        diff = compare_metadata(
+            MigrationContext.configure(connection, opts={'compare_type': True}),
+            db.metadata,
+        )
+    assert diff == []
     engine.dispose()
