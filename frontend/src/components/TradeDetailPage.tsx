@@ -38,6 +38,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ExecutionEditModal } from './ExecutionEditModal';
+import { OpenTradeNetPnlFigures, sumOpenPositionPnl } from './OpenTradeNetPnlFigures';
 import { SimpleNav } from './SimpleNav';
 import { TagSelector } from './TagSelector';
 import { ConfirmModal } from './ConfirmModal';
@@ -242,13 +243,10 @@ export function TradeDetailPage() {
   // Qty totals are gross contract counts (calls and puts summed together).
   // Open P&L total is null when no position has a quote, matching the rows.
   const openPositionsTotals = useMemo(() => {
-    const pnlValues = markedOpenPositions
-      .map((p) => p.openPnl)
-      .filter((v): v is number => v != null);
     return {
       qty: markedOpenPositions.reduce((sum, p) => sum + p.qty, 0),
       netCash: markedOpenPositions.reduce((sum, p) => sum + p.netCash, 0),
-      openPnl: pnlValues.length > 0 ? pnlValues.reduce((sum, v) => sum + v, 0) : null,
+      openPnl: sumOpenPositionPnl(markedOpenPositions.map((p) => p.openPnl)),
     };
   }, [markedOpenPositions]);
 
@@ -797,14 +795,11 @@ export function TradeDetailPage() {
             <CardContent className="pt-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className={`text-2xl font-bold ${(displayPnl || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {displayPnl == null ? '-' : formatCurrency(displayPnl)}
-                  </div>
-                  {isTradeOpen && (
-                    <div className={`text-sm ${netCashSum >= 0 ? 'text-profit' : 'text-loss'}`}>
-                      Net Cash: {formatCurrency(netCashSum)}
-                    </div>
-                  )}
+                  <OpenTradeNetPnlFigures
+                    isOpen={isTradeOpen}
+                    pnl={displayPnl}
+                    netCash={netCashSum}
+                  />
                 </div>
                 <Button
                   variant="ghost"

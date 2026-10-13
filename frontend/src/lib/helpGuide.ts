@@ -147,8 +147,8 @@ export const helpSections: HelpSection[] = [
       },
       {
         id: 'dashboard-charts', title: 'Read the charts and drill into the data',
-        paragraphs: ['Cumulative P&L is a running total of journal profit/loss, not a complete broker equity statement. Drawdown shows the decline from prior cumulative peaks. Weekly/Monthly P&L groups results by the chosen histogram interval.', 'P&L by Symbol and P&L by Tag group results by instrument and classification. Entry-hour, activity and duration analyses depend on the relevant timestamps and their own calculation subsets.'],
-        tips: ['Hover chart elements and information icons for values and explanations.', 'The Exclude SPX control affects the symbol chart; it is not a global account or trade deletion filter.', 'A trade with several tags can contribute to more than one tag bar, so adding tag bars is not necessarily the overall account total.', 'Open Trades / Positions distinguishes trade and position rows. A trade row opens its details; an unmatched position can open execution editing.'],
+        paragraphs: ['Cumulative P&L is a running total of journal profit/loss, not a complete broker equity statement. Drawdown shows the decline from prior cumulative peaks. Weekly/Monthly P&L groups results by the chosen histogram interval.', 'P&L by Symbol, P&L by Tag, P&L by Entry Hour and Duration Analysis add an open trade’s current open P&L when a quote is available and the trade had already been opened by the end of the selected period. A missing quote adds nothing and is not treated as zero. Entry hour includes only trades held for no more than 24 hours. Duration groups by time held, and an open trade is measured through the current time. Intraday activity counts entries by hour and includes that same open mark in the hour total. Win % by Entry Hour uses that open mark and skips a trade when the quote is missing.'],
+        tips: ['Hover chart elements and information icons for values and explanations.', 'The Exclude SPX control affects the symbol chart; it is not a global account or trade deletion filter.', 'A trade with several tags can contribute to more than one tag bar, so adding tag bars is not necessarily the overall account total.', 'Open Trades / Positions distinguishes trade and position rows. A trade row opens its details; an unmatched position can open execution editing.', 'Headline realized stats stay on closed trades. Symbol, tag, entry-hour and duration charts include a current open mark.'],
         keywords: ['cumulative', 'drawdown', 'weekly', 'monthly', 'symbol', 'SPX', 'chart', 'histogram'],
       },
       {
@@ -183,7 +183,7 @@ export const helpSections: HelpSection[] = [
       },
       {
         id: 'metric-streak-duration', title: 'Streaks, entry hours and duration',
-        paragraphs: ['Streak Analysis counts consecutive winning or losing days, rather than simply counting consecutive individual trades. A break-even day resets the streak calculation.', 'Duration analysis describes how long trades were held. Entry-hour and intraday charts require reliable execution times. A broker report containing dates only cannot support precise minute-by-minute analysis.'],
+        paragraphs: ['Streak Analysis counts consecutive winning or losing days, rather than simply counting consecutive individual trades. A break-even day resets the streak calculation.', 'Duration analysis groups closed-trade net P&L by time held and adds an open trade’s current open P&L measured through now. Entry-hour charts include only trades held for no more than 24 hours and need a real execution time. A date-only broker report cannot support precise minute-by-minute analysis.'],
         tips: ['A multi-leg position’s grouping affects its entry, exit and duration.', 'Use the Trades time and duration filters to inspect the underlying rows before drawing conclusions from a chart.'],
         keywords: ['streak', 'consecutive', 'days', 'duration', 'minutes', 'hours', 'intraday'],
       },
@@ -229,8 +229,8 @@ export const helpSections: HelpSection[] = [
     topics: [
       {
         id: 'trade-detail-overview', title: 'Read the trade header, P&L and position tables',
-        paragraphs: ['Open a trade from its number or linked row. The top header shows the trade number and associated account; combined trades also show a Combined badge.', 'Closed trades show realized net and gross P&L and commissions. For an open trade, Net Cash is cash movement from its executions, while open P&L is a separate estimate when quote data is available.'],
-        tips: ['Open and closed position tables summarize symbol quantities and cash flows. Contract quantity totals can be gross counts across legs, not the net strategy size.', 'The execution table’s symbol-status indicator describes whether that symbol has remaining quantity; the Opening/Closing field is a separate execution classification.', 'A blank or dash for an open quote means unavailable, not necessarily zero profit/loss. Delayed option quotes are not live broker marks.'],
+        paragraphs: ['Open a trade from its number or linked row. The top header shows the trade number and associated account; combined trades also show a Combined badge.', 'Closed trades show realized net and gross P&L and commissions. For an open trade with a quote, the Net P&L card shows estimated open P&L and net cash underneath. When a quote cannot be found, that trade has no open P&L and the card shows only the trade’s net cash.'],
+        tips: ['Open and closed position tables summarize symbol quantities and cash flows. Contract quantity totals can be gross counts across legs, not the net strategy size.', 'The execution table’s symbol-status indicator describes whether that symbol has remaining quantity; the Opening/Closing field is a separate execution classification.', 'A blank or dash for an open quote or open P&L means unavailable, not zero. Delayed stock and option quotes are not live broker marks.'],
         keywords: ['trade number', 'account name', 'net cash', 'open pnl', 'positions', 'commissions', 'quote'],
       },
       {
@@ -403,7 +403,7 @@ export const helpSections: HelpSection[] = [
       },
       {
         id: 'unavailable-quotes', title: 'Why is open P&L blank or a quote missing?',
-        paragraphs: ['Open P&L depends on a supported instrument and a usable quote. Delayed option data can be unavailable, and symbols need sufficient underlying, expiry, strike and call/put information.', 'A missing quote is not a zero-value quote. Net cash still describes the recorded cash movements, but it is not a substitute for a live market valuation.'],
+        paragraphs: ['Open P&L depends on a supported instrument and a usable quote. Option marks use delayed option quotes and need underlying, expiry, strike and call/put. Stock marks use a delayed US-listed equity quote for the stock symbol. Futures and cash rows are not marked.', 'When any open leg has no quote, the trade shows no open P&L in the trades list or position total. The Net P&L card then shows only that trade’s net cash. A missing quote is not stored or displayed as zero profit/loss.'],
         tips: ['Check contract metadata against the broker report.', 'Use the broker platform for current marks and trading decisions.', 'Refresh may retry available data, but it does not guarantee an upstream quote will exist.'],
         keywords: ['quote', 'open pnl', 'blank', 'dash', 'delayed', 'market data', 'price'],
       },

@@ -11,6 +11,7 @@ import type { DashboardData, OverallStats, DailyStats, DailyJournal, Trade, Trad
 import { AlertCircle, Eye, EyeOff, Settings2, Info, ChevronLeft, ChevronRight, ExternalLink, Settings, CalendarDays, CalendarRange } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { calculateSortinoStats } from '@/lib/sortino';
+import { chartTradePnl, untaggedTagBucket } from '@/lib/dashboardPnl';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -510,7 +511,8 @@ function App() {
       
       const existing = hourMap.get(hour) || { trades: 0, pnl: 0 };
       existing.trades += 1; // Count actual trades, not executions
-      existing.pnl += trade.net_pnl || 0;
+      const pnl = chartTradePnl(trade);
+      if (pnl != null) existing.pnl += pnl;
       hourMap.set(hour, existing);
     });
     
@@ -726,24 +728,12 @@ function App() {
       }));
   }, [data?.trade_pnl_by_hour]);
 
-  // Prepare tag P&L data including untagged bucket
+  // Prepare tag P&L data including untagged bucket.
+  // Tagged bars come from the API, which adds current open P&L to realized net P&L.
+  // Untagged trades are not in that response.
   const tagPnlData = useMemo(() => {
     const backendTagPnl = data?.tag_pnl || [];
-    
-    // Calculate untagged trades P&L
-    const untaggedTrades = allTrades.filter(trade => !trade.tags || trade.tags.length === 0);
-    const untaggedPnl = untaggedTrades.reduce((sum, trade) => sum + (trade.net_pnl || 0), 0);
-    
-    // Create untagged bucket if there are untagged trades
-    const untaggedBucket = untaggedTrades.length > 0 ? [{
-      tag: '(untagged)',
-      pnl: untaggedPnl,
-      count: untaggedTrades.length,
-      color: untaggedPnl >= 0 ? '#22c55e' : '#ef4444',
-    }] : [];
-    
-    // Combine backend tag data with untagged bucket
-    return [...backendTagPnl, ...untaggedBucket];
+    return [...backendTagPnl, ...untaggedTagBucket(allTrades)];
   }, [data?.tag_pnl, allTrades]);
 
   // Prepare win rate by entry hour data (calculated from filtered trades)
@@ -790,9 +780,11 @@ function App() {
       
       if (hour === null || isNaN(hour)) return;
       
+      const pnl = chartTradePnl(trade);
+      if (pnl == null) return;
       const existing = hourMap.get(hour) || { wins: 0, total: 0 };
       existing.total += 1;
-      if ((trade.net_pnl || 0) > 0) {
+      if (pnl > 0) {
         existing.wins += 1;
       }
       hourMap.set(hour, existing);
@@ -1378,7 +1370,7 @@ function App() {
             <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col">
               <CardHeaderWithTooltip 
                 title="Duration Analysis" 
-                tooltip="Trade duration analysis showing P&L by time held"
+                tooltip="Closed-trade net P&L plus current open P&L, by time held"
               >
                 <button
                   onClick={() => openCardSettings('duration')}
@@ -1446,7 +1438,7 @@ function App() {
             <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col">
               <CardHeaderWithTooltip 
                 title="P&L by Tag" 
-                tooltip="Trade P&L grouped by tags"
+                tooltip="Closed-trade net P&L plus current open P&L, grouped by tag"
               >
                 <span className="text-sm text-muted-foreground">
                   {tagPnlData.length} {tagPnlData.length === 1 ? 'bucket' : 'buckets'}
@@ -1509,7 +1501,7 @@ function App() {
             <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col">
               <CardHeaderWithTooltip 
                 title="P&L by Entry Hour" 
-                tooltip="Profit/loss grouped by trade entry hour of day"
+                tooltip="Intraday closed-trade net P&L plus current open P&L, by entry hour"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Intraday trades only</span>
@@ -1873,7 +1865,7 @@ function App() {
             <div className="bg-card border border-border rounded-lg p-4">
               <CardHeaderWithTooltip 
                 title="P&L by Symbol" 
-                tooltip="Total profit/loss grouped by symbol"
+                tooltip="Closed-trade net P&L plus current open P&L, grouped by underlying"
               >
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">

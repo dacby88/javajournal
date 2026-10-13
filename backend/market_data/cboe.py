@@ -57,13 +57,59 @@ def _http_get_json(url, timeout=20):
         return json.loads(response.read().decode('utf-8'))
 
 
+def equity_ticker(symbol):
+    """CBOE equity ticker. Class shares use ROOT.X (BRK B, BRK/B, BRK-B)."""
+    raw = (symbol or '').strip().upper()
+    if not raw:
+        return None
+    for separator in (' ', '/', '-'):
+        if separator not in raw:
+            continue
+        root, _, suffix = raw.rpartition(separator)
+        root = root.strip().rstrip('.')
+        suffix = suffix.strip()
+        if root and len(suffix) == 1 and suffix.isalpha():
+            raw = f'{root}.{suffix}'
+        break
+    if not raw or any(char.isspace() for char in raw):
+        return None
+    allowed = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.')
+    if any(char not in allowed for char in raw):
+        return None
+    return raw
+
+
+def _positive_price(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number > 0:
+        return number
+    return None
+
+
+def equity_price(quote):
+    """Bid/ask mid, then last, then previous close. Non-positive prices are ignored."""
+    quote = quote or {}
+    mid = mid_price(_positive_price(quote.get('bid')), _positive_price(quote.get('ask')))
+    if mid is not None and mid > 0:
+        return mid
+    for key in ('current_price', 'close'):
+        price = _positive_price(quote.get(key))
+        if price is not None:
+            return price
+    return None
+
+
 class CboeDelayedQuotesSource:
-    """Fetches delayed option chains from CBOE's public JSON CDN."""
+    """Fetches delayed option chains and equity quotes from CBOE's public JSON CDN."""
 
     def __init__(self, fetch=None, ttl=300):
         self._fetch = fetch or _http_get_json
         self._ttl = ttl
         self._cache = {}  # ticker -> (expires_at, occ -> row)
+        self._quote_cache = {}  # ticker -> (expires_at, price or None)
 
     def _load_chain(self, ticker):
         now = datetime.utcnow()
@@ -112,3 +158,31 @@ class CboeDelayedQuotesSource:
             if row:
                 return mid_price(row.get('bid'), row.get('ask'))
         return None
+
+    def _load_equity_quote(self, ticker):
+        now = datetime.utcnow()
+        cached = self._quote_cache.get(ticker)
+        if cached and cached[0] > now:
+            return cached[1]
+
+        url = QUOTE_URL.format(ticker=ticker)
+        try:
+            payload = self._fetch(url)
+        except (URLError, TimeoutError, ValueError, json.JSONDecodeError):
+            if cached:
+                return cached[1]
+            raise
+
+        price = equity_price((payload or {}).get('data'))
+        self._quote_cache[ticker] = (now + timedelta(seconds=self._ttl), price)
+        return price
+
+    def lookup_stock_mid(self, symbol):
+        """Delayed equity mid for a US-listed stock or ETF. None when unavailable."""
+        ticker = equity_ticker(symbol)
+        if not ticker:
+            return None
+        try:
+            return self._load_equity_quote(ticker)
+        except Exception:
+            return None

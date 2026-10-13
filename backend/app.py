@@ -3105,15 +3105,22 @@ def get_dashboard_data():
             if pos['count'] > 0:
                 avg_price = abs(pos['total_cost'] / pos['total_quantity']) if pos['total_quantity'] != 0 else 0
                 open_pnl = None
-                if quote_service and (pos['asset_class'] or '').upper() in ('OPT', 'FOP'):
+                asset = (pos['asset_class'] or '').upper()
+                mid = None
+                multiplier = None
+                if quote_service and asset in ('OPT', 'FOP'):
                     mid = quote_service.lookup_mid(
                         pos['underlying_symbol'] or pos['symbol'],
                         pos['expiry'],
                         pos['put_call'],
                         pos['strike'],
                     )
-                    if mid is not None:
-                        open_pnl = pos['total_net_cash'] + pos['total_quantity'] * mid * 100.0
+                    multiplier = 100.0
+                elif quote_service and asset == 'STK':
+                    mid = quote_service.lookup_stock_mid(pos['symbol'] or pos['underlying_symbol'])
+                    multiplier = 1.0
+                if mid is not None and multiplier is not None:
+                    open_pnl = pos['total_net_cash'] + pos['total_quantity'] * mid * multiplier
                 open_positions.append({
                     'id': f"{key}_open",  # Synthetic ID
                     'symbol': pos['symbol'],
@@ -3191,6 +3198,21 @@ def get_dashboard_data():
             d_dict = d.to_dict()
             d_dict['execution_count'] = exec_counts.get(d_dict['date'], 0)
             calendar_data.append(d_dict)
+
+        # Closed rows above use stored net_pnl. Open trades store net_pnl as 0,
+        # so add the live mark when the trade was already open during the window.
+        _include_open_trade_pnl(
+            symbol_pnl,
+            tag_pnl,
+            open_positions,
+            stats_end_date if use_date_filter else None,
+        )
+        _include_open_trade_hour_and_duration(
+            trade_pnl_by_hour,
+            duration_pnl,
+            open_positions,
+            stats_end_date if use_date_filter else None,
+        )
         
         return jsonify({
             'success': True,
@@ -3255,6 +3277,152 @@ def get_default_stats():
         'left_on_table': 0,
         'good_captures': 0
     }
+
+
+def _include_open_trade_pnl(symbol_pnl, tag_pnl, open_rows, period_end):
+    """Add each open trade's current open P&L to the symbol and tag charts.
+
+    A missing quote is omitted. The same full amount is added to every tag on
+    the trade, matching how closed net P&L is grouped. Untagged trades are
+    left for the dashboard's separate untagged bucket.
+    """
+    symbol_index = {row['symbol']: row for row in symbol_pnl}
+    tag_index = {row['tag']: row for row in tag_pnl}
+
+    for row in open_rows:
+        if row.get('type') != 'T':
+            continue
+        if period_end is not None:
+            entry = row.get('trade_date')
+            if entry and entry > period_end.isoformat():
+                continue
+        pnl = row.get('open_pnl')
+        if pnl is None:
+            continue
+        pnl = float(pnl)
+
+        symbol = row.get('underlying_symbol')
+        if symbol:
+            bucket = symbol_index.get(symbol)
+            if bucket is None:
+                bucket = {'symbol': symbol, 'pnl': 0.0, 'count': 0}
+                symbol_pnl.append(bucket)
+                symbol_index[symbol] = bucket
+            bucket['pnl'] = float(bucket['pnl'] or 0) + pnl
+            bucket['count'] = int(bucket['count'] or 0) + 1
+
+        for tag in row.get('tags') or []:
+            name = tag.get('name')
+            if not name:
+                continue
+            bucket = tag_index.get(name)
+            if bucket is None:
+                bucket = {
+                    'tag': name,
+                    'pnl': 0.0,
+                    'count': 0,
+                    'color': tag.get('color') or '#3b82f6',
+                }
+                tag_pnl.append(bucket)
+                tag_index[name] = bucket
+            bucket['pnl'] = float(bucket['pnl'] or 0) + pnl
+            bucket['count'] = int(bucket['count'] or 0) + 1
+
+    symbol_pnl.sort(key=lambda item: abs(item['pnl']), reverse=True)
+    tag_pnl.sort(key=lambda item: abs(item['pnl']), reverse=True)
+
+
+def _naive_ny_datetime(value):
+    """Return a naive America/New_York datetime.
+
+    Stored execution times are already New York time. SQLite can hand back the
+    aggregate minimum as text, so accept both forms.
+    """
+    import pytz
+
+    if value is None or value == '':
+        return None
+    if isinstance(value, str):
+        text = value.strip().replace('Z', '+00:00')
+        if ' ' in text and 'T' not in text:
+            text = text.replace(' ', 'T', 1)
+        value = datetime.fromisoformat(text)
+    if getattr(value, 'tzinfo', None) is not None:
+        value = value.astimezone(pytz.timezone('America/New_York')).replace(tzinfo=None)
+    return value
+
+
+def _include_open_trade_hour_and_duration(hourly, duration, open_rows, period_end, as_of=None):
+    """Add current open P&L to the entry-hour and duration charts.
+
+    Entry hour stays limited to trades held no more than 24 hours. Duration
+    uses time held so far. A missing quote is omitted from both.
+    """
+    import pytz
+
+    as_of = as_of or datetime.now(pytz.timezone('America/New_York')).replace(tzinfo=None)
+    candidates = []
+    for row in open_rows:
+        if row.get('type') != 'T' or row.get('open_pnl') is None:
+            continue
+        if period_end is not None:
+            entry = row.get('trade_date')
+            if entry and entry > period_end.isoformat():
+                continue
+        candidates.append(row)
+    if not candidates:
+        return
+
+    trade_ids = [row['id'] for row in candidates]
+    first_exec = {}
+    exec_rows = db.session.query(
+        Execution.matched_trade_id,
+        func.min(Execution.exec_datetime),
+    ).filter(
+        Execution.matched_trade_id.in_(trade_ids),
+        Execution.exec_datetime.isnot(None),
+    ).group_by(Execution.matched_trade_id).all()
+    for trade_id, entry_dt in exec_rows:
+        first_exec[trade_id] = _naive_ny_datetime(entry_dt)
+
+    hour_index = {row['hour']: row for row in hourly}
+    if not duration:
+        duration.extend(_empty_duration_buckets())
+    duration_index = {row['bucket']: row for row in duration}
+
+    for row in candidates:
+        pnl = float(row['open_pnl'])
+        entry_dt = first_exec.get(row['id'])
+        entry_date = None
+        if row.get('trade_date'):
+            entry_date = datetime.fromisoformat(row['trade_date']).date()
+
+        if entry_dt is not None:
+            held_minutes = max(0.0, (as_of - entry_dt).total_seconds() / 60.0)
+            entry_hour = entry_dt.hour
+        elif entry_date is not None:
+            held_minutes = max(0, (as_of.date() - entry_date).days) * 1440
+            entry_hour = None
+        else:
+            continue
+
+        label = _duration_label(held_minutes)
+        if label and label in duration_index:
+            bucket = duration_index[label]
+            bucket['pnl'] = round(float(bucket['pnl'] or 0) + pnl, 2)
+            bucket['count'] = int(bucket['count'] or 0) + 1
+
+        if entry_hour is None or held_minutes > 24 * 60:
+            continue
+        hour_bucket = hour_index.get(entry_hour)
+        if hour_bucket is None:
+            hour_bucket = {'hour': entry_hour, 'pnl': 0.0, 'count': 0}
+            hourly.append(hour_bucket)
+            hour_index[entry_hour] = hour_bucket
+        hour_bucket['pnl'] = round(float(hour_bucket['pnl'] or 0) + pnl, 2)
+        hour_bucket['count'] = int(hour_bucket['count'] or 0) + 1
+
+    hourly.sort(key=lambda item: item['hour'])
 
 
 def calculate_tag_pnl():
@@ -3455,6 +3623,9 @@ def calculate_trade_pnl_by_hour_filtered(account_ids=None, start_date=None, end_
         
         if use_date_filter and start_date and end_date:
             query = query.filter(Trade.exit_date >= start_date, Trade.exit_date <= end_date)
+
+        # Open trades store net_pnl as 0. Their live mark is added later.
+        query = query.filter(Trade.is_open.isnot(True))
         
         if account_ids:
             query = query.filter((Trade.account_id.in_(account_ids)) | (Trade.account_id == None))
@@ -3518,27 +3689,40 @@ def calculate_trade_pnl_by_hour_filtered(account_ids=None, start_date=None, end_
         return []
 
 
+# (min_minutes, max_minutes, label). The upper bound is exclusive, so 24 hours starts 1-3days.
+DURATION_BUCKETS = [
+    (0, 30, '0-30min'),
+    (30, 60, '30min-1hr'),
+    (60, 120, '1-2hr'),
+    (120, 240, '2-4hr'),
+    (240, 480, '4-8hr'),
+    (480, 720, '8-12hr'),
+    (720, 1440, '12-24hr'),
+    (1440, 4320, '1-3days'),
+    (4320, 10080, '3-7days'),
+    (10080, 43200, '7-30days'),
+    (43200, 129600, '30-90days'),
+    (129600, float('inf'), '>90days'),
+]
+
+
+def _duration_label(minutes):
+    for min_minutes, max_minutes, label in DURATION_BUCKETS:
+        if min_minutes <= minutes < max_minutes:
+            return label
+    return None
+
+
+def _empty_duration_buckets():
+    return [{'bucket': label, 'pnl': 0.0, 'count': 0} for _, _, label in DURATION_BUCKETS]
+
+
 def calculate_duration_buckets(trades):
     """Calculate P&L grouped by trade duration buckets"""
     if not trades:
         return []
     
-    # Define duration buckets (in minutes)
-    # Format: (min_minutes, max_minutes, label)
-    buckets = [
-        (0, 30, '0-30min'),
-        (30, 60, '30min-1hr'),
-        (60, 120, '1-2hr'),
-        (120, 240, '2-4hr'),
-        (240, 480, '4-8hr'),
-        (480, 720, '8-12hr'),
-        (720, 1440, '12-24hr'),
-        (1440, 4320, '1-3days'),
-        (4320, 10080, '3-7days'),
-        (10080, 43200, '7-30days'),
-        (43200, 129600, '30-90days'),
-        (129600, float('inf'), '>90days')
-    ]
+    buckets = DURATION_BUCKETS
     
     # Initialize bucket data
     bucket_data = {label: {'pnl': 0, 'count': 0} for _, _, label in buckets}

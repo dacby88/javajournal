@@ -9,8 +9,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from market_data.cboe import CboeDelayedQuotesSource, chain_ticker, mid_price, to_occ
+from market_data.cboe import CboeDelayedQuotesSource, chain_ticker, equity_price, equity_ticker, mid_price, to_occ
 from market_data.pnl import mark_trade
+from market_data.service import QuoteService
 
 
 def test_to_occ_encodes_spx_put():
@@ -143,4 +144,118 @@ def test_mark_trade_positions_include_description_and_per_position_open_pnl():
 
 def test_mark_trade_open_pnl_none_without_mid():
     result = mark_trade([_exec()], {})
+    assert result['open_pnl'] is None
     assert result['open_positions'][0]['open_pnl'] is None
+    assert result['open_positions'][0]['mid'] is None
+
+
+def test_mark_trade_open_pnl_none_when_any_open_symbol_lacks_a_quote():
+    """A quoted option does not make a trade P&L while the stock quote is missing."""
+    stock = _exec(
+        symbol='AAPL',
+        underlying_symbol='AAPL',
+        asset_class='STK',
+        multiplier=1,
+        quantity=10,
+        price=40,
+        net_cash=-400.0,
+        strike=None,
+        expiry=None,
+        put_call=None,
+        side='BUY',
+    )
+    option = _exec()
+    result = mark_trade([stock, option], {option.symbol: 12.0})
+    assert result['open_pnl'] is None
+    by_symbol = {row['symbol']: row for row in result['open_positions']}
+    assert by_symbol['AAPL']['mid'] is None
+    assert by_symbol['AAPL']['open_pnl'] is None
+    assert by_symbol[option.symbol]['open_pnl'] == -200.0
+
+
+def test_equity_ticker_normalizes_class_shares():
+    assert equity_ticker('aapl') == 'AAPL'
+    assert equity_ticker('BRK.B') == 'BRK.B'
+    assert equity_ticker('BRK B') == 'BRK.B'
+    assert equity_ticker('BRK/B') == 'BRK.B'
+    assert equity_ticker('brk-b') == 'BRK.B'
+    assert equity_ticker('') is None
+    assert equity_ticker('NOT A STOCK') is None
+
+
+def test_equity_price_prefers_bid_ask_mid():
+    assert equity_price({'bid': 10, 'ask': 12, 'current_price': 99}) == 11.0
+
+
+def test_equity_price_falls_back_when_bid_ask_missing_or_zero():
+    assert equity_price({'bid': 0, 'ask': None, 'current_price': 521.5, 'close': 500}) == 521.5
+    assert equity_price({'close': 40}) == 40.0
+    assert equity_price({}) is None
+
+
+def test_cboe_stock_mid_uses_bid_ask_and_caches():
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        assert url.endswith('/quotes/AAPL.json')
+        return {'data': {'bid': 10.0, 'ask': 12.0, 'current_price': 99.0}}
+
+    source = CboeDelayedQuotesSource(fetch=fake_fetch, ttl=9999)
+    assert source.lookup_stock_mid('aapl') == 11.0
+    assert source.lookup_stock_mid('AAPL') == 11.0
+    assert len(calls) == 1
+
+
+def test_cboe_stock_class_share_requests_dotted_ticker():
+    def fake_fetch(url):
+        assert url.endswith('/quotes/BRK.B.json')
+        return {'data': {'bid': 0, 'ask': None, 'current_price': 521.5}}
+
+    source = CboeDelayedQuotesSource(fetch=fake_fetch, ttl=9999)
+    assert source.lookup_stock_mid('BRK B') == 521.5
+    assert source.lookup_stock_mid('BRK/B') == 521.5
+
+
+def test_cboe_stock_lookup_returns_none_when_quote_fetch_fails():
+    def fake_fetch(url):
+        raise TimeoutError('upstream down')
+
+    source = CboeDelayedQuotesSource(fetch=fake_fetch, ttl=9999)
+    assert source.lookup_stock_mid('AAPL') is None
+
+
+def test_quote_service_marks_stock_with_share_multiplier():
+    class Source:
+        def lookup_mid(self, underlying, expiry, put_call, strike):
+            return 2.0
+
+        def lookup_stock_mid(self, symbol):
+            assert symbol == 'AAPL'
+            return 50.0
+
+    service = QuoteService(source=Source())
+    stock = _exec(
+        symbol='AAPL',
+        underlying_symbol='AAPL',
+        asset_class='STK',
+        multiplier=1,
+        quantity=10,
+        price=40,
+        net_cash=-400.0,
+        strike=None,
+        expiry=None,
+        put_call=None,
+        side='BUY',
+    )
+    option = _exec()
+    cash = _exec(symbol='USD', asset_class='CASH', multiplier=1)
+    quotes = service.mids_for_executions([stock, option, cash])
+    assert quotes['AAPL'] == 50.0
+    assert quotes[option.symbol] == 2.0
+    assert quotes['USD'] is None
+
+    marked = mark_trade([stock], quotes)
+    assert marked['open_pnl'] == 100.0
+    assert marked['open_positions'][0]['mid'] == 50.0
+    assert marked['open_positions'][0]['multiplier'] == 1.0

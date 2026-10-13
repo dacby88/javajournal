@@ -51,6 +51,7 @@ def mark_trade(executions, quotes_by_symbol):
     open_positions = []
     mtm_adjustment = 0.0
     total_net_cash = 0.0
+    missing_mark = False
 
     for symbol, row in sorted(by_symbol.items(), key=lambda item: item[0]):
         total_net_cash += row['all_net_cash']
@@ -59,7 +60,9 @@ def mark_trade(executions, quotes_by_symbol):
             continue
         mid = quotes_by_symbol.get(symbol)
         mtm_value = None
-        if mid is not None:
+        if mid is None:
+            missing_mark = True
+        else:
             mtm_value = remaining * float(mid) * row['multiplier']
             mtm_adjustment += mtm_value
         open_positions.append({
@@ -73,11 +76,11 @@ def mark_trade(executions, quotes_by_symbol):
             'multiplier': row['multiplier'],
             # Per-position open P&L: all net cash for the symbol (including
             # realized cash from closed lots) plus the mark-to-market of the
-            # remaining quantity. Rows sum to the trade-level open_pnl.
+            # remaining quantity. A missing quote leaves this row blank.
             'open_pnl': (row['all_net_cash'] + mtm_value) if mtm_value is not None else None,
         })
 
     return {
-        'open_pnl': total_net_cash + mtm_adjustment,
+        'open_pnl': None if missing_mark else total_net_cash + mtm_adjustment,
         'open_positions': open_positions,
     }
