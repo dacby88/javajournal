@@ -61,6 +61,15 @@ test('trade description guide explains automatic names and shared side overrides
   assert.match(text, /preserves the custom name and selected direction/);
 });
 
+test('list filter guides explain persistence after opening a trade', () => {
+  for (const id of ['trade-filters', 'execution-filters']) {
+    const topic = topics.find(topic => topic.id === id);
+    const text = topic.paragraphs.join(' ');
+    assert.match(text, /Applied filters, sorting and pagination are preserved/);
+    assert.match(text, /browser Back/);
+  }
+});
+
 test('search is case-insensitive and searches body text and keywords', () => {
   const result = filterHelpSections('  SPLIT execution  ').flatMap(section => section.topics);
   assert.ok(result.some(topic => topic.id === 'execution-split'));

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/services/api';
 import type { Trade, TradesFilter, TradeTag, Account } from '@/types';
 import { formatDateTime as formatDateTimeUtil, wrapTradeDescription, parseAccountIdsParam } from '@/lib/utils';
+import { filtersToSearchParams, mergeFiltersFromSearchParams } from '@/lib/filterQuery';
 import { 
   Search, 
   Filter, 
@@ -43,15 +44,13 @@ export function TradesPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  
-  // Load filters from sessionStorage on mount
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const loadSavedFilters = (): TradesFilter => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Clear old datetime fields that are no longer used
         delete parsed.start_datetime;
         delete parsed.end_datetime;
         return parsed;
@@ -61,80 +60,26 @@ export function TradesPage() {
     }
     return { limit: 50, offset: 0 };
   };
-  
+
   const [filters, setFilters] = useState<TradesFilter>(() => {
     const saved = loadSavedFilters();
-    // Check for URL params
-    const urlAccountIds = parseAccountIdsParam(searchParams);
-    const urlStartDate = searchParams.get('start_date');
-    const urlEndDate = searchParams.get('end_date');
-    const urlDateFilterMode = searchParams.get('date_filter_mode') as 'exit_date' | 'entry_date' | 'active_date' | null;
-    const urlTradeStatus = searchParams.get('trade_status') as 'open' | 'closed' | 'all' | null;
-    
-    // If any URL filters were applied, build filters from URL (not saved)
-    // to avoid stale sessionStorage values (e.g. dates) leaking through
-    if (urlAccountIds.length > 0 || urlStartDate || urlEndDate || urlDateFilterMode || urlTradeStatus) {
-      const urlFilters: TradesFilter = {
-        ...saved,
-        start_date: urlStartDate || '',
-        end_date: urlEndDate || '',
-        date_filter_mode: urlDateFilterMode || 'active_date',
-      };
+    if (searchParams.toString()) {
+      const urlFilters = mergeFiltersFromSearchParams(saved, searchParams);
+      urlFilters.start_date = searchParams.get('start_date') || '';
+      urlFilters.end_date = searchParams.get('end_date') || '';
+      urlFilters.date_filter_mode = (searchParams.get('date_filter_mode') || 'active_date') as TradesFilter['date_filter_mode'];
+      const urlAccountIds = parseAccountIdsParam(searchParams);
       if (urlAccountIds.length > 0) {
         urlFilters.account_ids = urlAccountIds;
         delete urlFilters.account_id;
-      }
-      if (urlTradeStatus) {
-        urlFilters.trade_status = urlTradeStatus;
       }
       return urlFilters;
     }
     return saved;
   });
-  
+
   const loadSavedTempFilters = () => {
-    const urlAccountIds = parseAccountIdsParam(searchParams);
-    const urlStartDate = searchParams.get('start_date');
-    const urlEndDate = searchParams.get('end_date');
-    const urlDateFilterMode = searchParams.get('date_filter_mode') as 'exit_date' | 'entry_date' | 'active_date' | null;
-    const urlTradeStatus = searchParams.get('trade_status') as 'open' | 'closed' | 'all' | null;
-
-    // If URL params are present, ignore sessionStorage to avoid stale values
-    if (urlAccountIds.length > 0 || urlStartDate || urlEndDate || urlDateFilterMode || urlTradeStatus) {
-      return {
-        symbol: '',
-        underlying: '',
-        start_date: urlStartDate || '',
-        end_date: urlEndDate || '',
-        date_filter_mode: urlDateFilterMode || 'active_date',
-        entry_time_start: '',
-        entry_time_end: '',
-        exit_time_start: '',
-        exit_time_end: '',
-        duration_min: '',
-        duration_max: '',
-        side: 'ALL',
-        account_ids: urlAccountIds,
-        tag_ids: [],
-        tag_mode: 'AND',
-        trade_status: urlTradeStatus || 'all',
-      };
-    }
-
-    try {
-      const saved = sessionStorage.getItem(`${STORAGE_KEY}_temp`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Clear old datetime fields that are no longer used
-        delete parsed.start_datetime;
-        delete parsed.end_datetime;
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to load temp filters:', e);
-    }
-    
-    return {
+    const defaults = {
       symbol: '',
       underlying: '',
       start_date: '',
@@ -148,10 +93,37 @@ export function TradesPage() {
       duration_max: '',
       side: 'ALL',
       account_ids: [] as number[],
-      tag_ids: [],
+      tag_ids: [] as number[],
       tag_mode: 'AND',
       trade_status: 'all',
     };
+
+    if (searchParams.toString()) {
+      const urlFilters = mergeFiltersFromSearchParams(defaults, searchParams);
+      const urlAccountIds = parseAccountIdsParam(searchParams);
+      if (urlAccountIds.length > 0) urlFilters.account_ids = urlAccountIds;
+      if (searchParams.has('duration_min_minutes')) {
+        urlFilters.duration_min = searchParams.get('duration_min_minutes') || '';
+      }
+      if (searchParams.has('duration_max_minutes')) {
+        urlFilters.duration_max = searchParams.get('duration_max_minutes') || '';
+      }
+      return urlFilters;
+    }
+
+    try {
+      const saved = sessionStorage.getItem(`${STORAGE_KEY}_temp`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        delete parsed.start_datetime;
+        delete parsed.end_datetime;
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to load temp filters:', e);
+    }
+
+    return defaults;
   };
 
   const [tempFilters, setTempFilters] = useState(loadSavedTempFilters);
@@ -196,36 +168,45 @@ export function TradesPage() {
     sessionStorage.setItem(`${STORAGE_KEY}_temp`, JSON.stringify(tempFilters));
   }, [tempFilters]);
 
-  // Handle URL params changes - this allows navigation from other pages with filters
   useEffect(() => {
-    const urlAccountIds = parseAccountIdsParam(searchParams);
-    const urlStartDate = searchParams.get('start_date');
-    const urlEndDate = searchParams.get('end_date');
-    const urlDateFilterMode = searchParams.get('date_filter_mode') as 'exit_date' | 'entry_date' | 'active_date' | null;
-    const urlTradeStatus = searchParams.get('trade_status') as 'open' | 'closed' | 'all' | null;
-    
-    if (urlAccountIds.length > 0 || urlStartDate || urlEndDate || urlDateFilterMode || urlTradeStatus) {
-      // Update filters from URL params
-      setFilters(prev => ({
-        ...prev,
-        ...(urlAccountIds.length > 0 ? { account_ids: urlAccountIds } : {}),
-        start_date: urlStartDate || '',
-        end_date: urlEndDate || '',
-        date_filter_mode: urlDateFilterMode || 'active_date',
-        ...(urlTradeStatus ? { trade_status: urlTradeStatus } : {}),
-        offset: 0,
-      }));
-      
-      // Also update tempFilters to match
-      setTempFilters((prev: typeof tempFilters) => ({
-        ...prev,
-        ...(urlAccountIds.length > 0 ? { account_ids: urlAccountIds } : {}),
-        start_date: urlStartDate || '',
-        end_date: urlEndDate || '',
-        date_filter_mode: urlDateFilterMode || 'active_date',
-        trade_status: urlTradeStatus || 'all',
-      }));
+    const params = filtersToSearchParams(filters);
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
     }
+  }, [filters, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!searchParams.toString()) return;
+    const urlAccountIds = parseAccountIdsParam(searchParams);
+
+    setFilters(prev => {
+      const next = mergeFiltersFromSearchParams(prev, searchParams);
+      next.start_date = searchParams.get('start_date') || '';
+      next.end_date = searchParams.get('end_date') || '';
+      next.date_filter_mode = (searchParams.get('date_filter_mode') || 'active_date') as TradesFilter['date_filter_mode'];
+      if (urlAccountIds.length > 0) {
+        next.account_ids = urlAccountIds;
+        delete next.account_id;
+      }
+      if (!searchParams.has('offset')) next.offset = 0;
+      return next;
+    });
+
+    setTempFilters((prev: typeof tempFilters) => {
+      const next = mergeFiltersFromSearchParams(prev, searchParams);
+      if (urlAccountIds.length > 0) next.account_ids = urlAccountIds;
+      next.start_date = searchParams.get('start_date') || '';
+      next.end_date = searchParams.get('end_date') || '';
+      next.date_filter_mode = searchParams.get('date_filter_mode') || 'active_date';
+      next.trade_status = searchParams.get('trade_status') || 'all';
+      if (searchParams.has('duration_min_minutes')) {
+        next.duration_min = searchParams.get('duration_min_minutes') || '';
+      }
+      if (searchParams.has('duration_max_minutes')) {
+        next.duration_max = searchParams.get('duration_max_minutes') || '';
+      }
+      return next;
+    });
   }, [searchParams]);
 
   const fetchAccounts = useCallback(async () => {

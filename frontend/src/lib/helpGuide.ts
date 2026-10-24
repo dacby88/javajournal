@@ -201,7 +201,7 @@ export const helpSections: HelpSection[] = [
     topics: [
       {
         id: 'trade-filters', title: 'Find trades with the right filters',
-        paragraphs: ['Trades provides symbol, underlying, side, accounts, tags, dates, time, duration and status controls. Edit the filter controls, then use Apply Filters; the displayed results and exports follow the applied filters, not merely values typed into the form.'],
+        paragraphs: ['Trades provides symbol, underlying, side, accounts, tags, dates, time, duration and status controls. Edit the filter controls, then use Apply Filters; the displayed results and exports follow the applied filters, not merely values typed into the form. Applied filters, sorting and pagination are preserved when you open a trade and return with browser Back.'],
         steps: ['Choose the relevant accounts, symbol/underlying and LONG or SHORT side.', 'Choose tag matching: ALL for every selected tag, ANY for at least one, or the untagged option for trades with no tags.', 'Choose start/end dates and Date Filter Mode: Exit Date for closures, Entry Date for openings, or Active Date for positions active in the interval.', 'Choose All, Open or Closed status and any entry/exit time or duration limits.', 'Apply Filters, then sort supported table columns or use pagination to review rows. Reset filters when you want to broaden the dataset.'],
         tips: ['A trade can be active across several days but realize its result on the closing date.', 'Opening, closing and active-date views answer different questions; their row counts can legitimately differ.'],
         links: [{ label: 'Open trades', to: '/trades' }],
@@ -262,7 +262,7 @@ export const helpSections: HelpSection[] = [
     topics: [
       {
         id: 'execution-filters', title: 'Find and inspect executions',
-        paragraphs: ['Executions shows individual imported or manually entered fills. Filters include account, symbol/underlying, BUY/SELL side, asset class, dates and matched state. Apply the filters to update the table.', 'Matched means linked to a trade. Opening/Closing describes position activity and is not the same as matched/unmatched. Click the linked trade control to inspect its grouping.'],
+        paragraphs: ['Executions shows individual imported or manually entered fills. Filters include account, symbol/underlying, BUY/SELL side, asset class, dates and matched state. Apply the filters to update the table. Applied filters, sorting and pagination are preserved when you open a linked trade and return with browser Back.', 'Matched means linked to a trade. Opening/Closing describes position activity and is not the same as matched/unmatched. Click the linked trade control to inspect its grouping.'],
         tips: ['Review account, signed quantity, price, multiplier, commission, net cash and timestamp together.', 'A security symbol identifies an individual contract; the underlying can group different contracts on the same instrument.'],
         links: [{ label: 'Open executions', to: '/executions' }],
         keywords: ['fills', 'buy', 'sell', 'matched', 'unmatched', 'asset class', 'underlying'],

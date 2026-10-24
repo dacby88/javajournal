@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import type { Execution, ExecutionsFilter, Trade, Account } from '@/types';
 import { formatDateTime as formatDateTimeUtil, formatDate, parseAccountIdsParam } from '@/lib/utils';
+import { filtersToSearchParams, mergeFiltersFromSearchParams } from '@/lib/filterQuery';
 import { 
   Search, 
   Filter, 
@@ -50,10 +51,9 @@ export function ExecutionsPage() {
   const [editingExecution, setEditingExecution] = useState<Execution | null>(null);
   const [splittingExecution, setSplittingExecution] = useState<Execution | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  
-  // Load filters from sessionStorage on mount
+
   const loadSavedFilters = (): ExecutionsFilter => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -65,40 +65,20 @@ export function ExecutionsPage() {
     }
     return { limit: 50, offset: 0 };
   };
-  
+
   const [filters, setFilters] = useState<ExecutionsFilter>(() => {
     const saved = loadSavedFilters();
-    // Check for account selection in URL params
+    const urlFilters = mergeFiltersFromSearchParams(saved, searchParams);
     const urlAccountIds = parseAccountIdsParam(searchParams);
     if (urlAccountIds.length > 0) {
-      return { ...saved, account_ids: urlAccountIds };
+      urlFilters.account_ids = urlAccountIds;
+      delete urlFilters.account_id;
     }
-    return saved;
+    return urlFilters;
   });
-  
+
   const loadSavedTempFilters = () => {
-    const urlAccountIds = parseAccountIdsParam(searchParams);
-    const urlMatched = searchParams.get('matched');
-    try {
-      const saved = sessionStorage.getItem(`${STORAGE_KEY}_temp`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // URL account selection wins over anything stored
-        if (urlAccountIds.length > 0) {
-          parsed.account_ids = urlAccountIds;
-          delete parsed.account_id;
-        }
-        // Check for matched in URL params
-        if (urlMatched !== null) {
-          parsed.matched = urlMatched === 'true' ? 'true' : urlMatched === 'false' ? 'false' : 'ALL';
-        }
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to load temp filters:', e);
-    }
-    // Check for account selection and matched in URL params
-    return {
+    const defaults = {
       symbol: '',
       underlying: '',
       start_date: '',
@@ -107,9 +87,24 @@ export function ExecutionsPage() {
       entry_time_end: '',
       side: 'ALL',
       asset_class: 'ALL',
-      account_ids: urlAccountIds,
-      matched: urlMatched === 'true' ? 'true' : urlMatched === 'false' ? 'false' : 'ALL',
+      account_ids: [] as number[],
+      matched: 'ALL',
     };
+
+    let saved = defaults;
+    try {
+      const stored = sessionStorage.getItem(`${STORAGE_KEY}_temp`);
+      if (stored) saved = JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to load temp filters:', e);
+    }
+
+    const urlFilters = mergeFiltersFromSearchParams(saved, searchParams);
+    const urlAccountIds = parseAccountIdsParam(searchParams);
+    if (urlAccountIds.length > 0) {
+      urlFilters.account_ids = urlAccountIds;
+    }
+    return urlFilters;
   };
   
   const [tempFilters, setTempFilters] = useState(loadSavedTempFilters);
@@ -148,6 +143,32 @@ export function ExecutionsPage() {
     sessionStorage.setItem(`${STORAGE_KEY}_temp`, JSON.stringify(tempFilters));
   }, [tempFilters]);
 
+  useEffect(() => {
+    const params = filtersToSearchParams(filters);
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [filters, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!searchParams.toString()) return;
+    const urlAccountIds = parseAccountIdsParam(searchParams);
+    setFilters(prev => {
+      const next = mergeFiltersFromSearchParams(prev, searchParams);
+      if (urlAccountIds.length > 0) {
+        next.account_ids = urlAccountIds;
+        delete next.account_id;
+      }
+      if (!searchParams.has('offset')) next.offset = 0;
+      return next;
+    });
+    setTempFilters((prev: typeof tempFilters) => {
+      const next = mergeFiltersFromSearchParams(prev, searchParams);
+      if (urlAccountIds.length > 0) next.account_ids = urlAccountIds;
+      return next;
+    });
+  }, [searchParams]);
+
   const fetchAccounts = useCallback(async () => {
     try {
       const response = await api.getAccounts();
@@ -179,7 +200,7 @@ export function ExecutionsPage() {
         ...filters,
         matched: normalizedMatched,
         side: filters.side === 'ALL' ? undefined : filters.side,
-        asset_class: tempFilters.asset_class === 'ALL' ? undefined : tempFilters.asset_class,
+        asset_class: filters.asset_class === 'ALL' ? undefined : filters.asset_class,
         account_ids: filters.account_ids && filters.account_ids.length > 0 ? filters.account_ids : undefined,
         account_id: undefined,
       };
