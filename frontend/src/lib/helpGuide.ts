@@ -75,10 +75,10 @@ export const helpSections: HelpSection[] = [
     topics: [
       {
         id: 'prepare-csv', title: 'Prepare the right kind of broker report',
-        paragraphs: ['Import execution-level CSV reports: one row per BUY or SELL fill. A completed-trade summary, cash-balance report or screenshot is not an execution report.', 'Choose the matching built-in format, such as Interactive Brokers, Schwab or Tastytrade, when available in your installation. Other layouts can use a custom mapping. The importer’s template download shows the expected execution fields.'],
+        paragraphs: ['Import execution-level CSV reports: one row per BUY or SELL fill. A completed-trade summary, cash-balance report or screenshot is not an execution report.', 'Choose the matching built-in format, such as Interactive Brokers, Schwab or Tastytrade, when available in your installation. Other layouts can use a custom mapping. The importer’s template download shows the expected execution fields.', 'Supported option symbols, including compact futures-option symbols with an underlying and six-character CBOE contract code, are normalized for display. When a standardized option description replaces a nonempty broker description, the original CSV description is preserved in the execution notes.'],
         tips: ['Useful fields include symbol, side, quantity, price, trade date, execution timestamp, commission, net cash and stable broker execution identifiers.', 'Option reports also need enough contract information to distinguish expiry, strike, call/put and multiplier.', 'Keep large files below the backend’s 16 MB request limit; splitting exports into smaller date ranges can make validation and troubleshooting easier.'],
         warning: 'Keep the original broker CSV as your source of truth. The app’s trade-summary export is not a replacement execution report for reimporting.',
-        keywords: ['IB', 'IBKR', 'Schwab', 'Tastytrade', 'Tradier', 'template', 'file', 'report'],
+        keywords: ['IB', 'IBKR', 'Schwab', 'Tastytrade', 'Tradier', 'template', 'file', 'report', 'compact futures option', 'CBOE', 'execution notes'],
       },
       {
         id: 'import-preview', title: 'Import a CSV and review its preview',
@@ -230,8 +230,8 @@ export const helpSections: HelpSection[] = [
       {
         id: 'trade-detail-overview', title: 'Read the trade header, P&L and position tables',
         paragraphs: ['Open a trade from its number or linked row. The top header shows the trade number and associated account; combined trades also show a Combined badge.', 'Closed trades show realized net and gross P&L and commissions. For an open trade with a quote, the Net P&L card shows estimated open P&L and net cash underneath. When a quote cannot be found, that trade has no open P&L and the card shows only the trade’s net cash.'],
-        tips: ['Open and closed position tables summarize symbol quantities and cash flows. Contract quantity totals can be gross counts across legs, not the net strategy size.', 'The execution table’s symbol-status indicator describes whether that symbol has remaining quantity; the Opening/Closing field is a separate execution classification.', 'A blank or dash for an open quote or open P&L means unavailable, not zero. Delayed stock and option quotes are not live broker marks.'],
-        keywords: ['trade number', 'account name', 'net cash', 'open pnl', 'positions', 'commissions', 'quote'],
+        tips: ['Open and closed position tables summarize symbol quantities and cash flows. Contract quantity totals can be gross counts across legs, not the net strategy size.', 'For each symbol, Open Date is the earliest opening execution date and Close Date is the latest closing execution date, shown without times. A partially closed open position can show both dates; a position with no closing execution shows a dash.', 'The execution table’s symbol-status indicator describes whether that symbol has remaining quantity; the Opening/Closing field is a separate execution classification.', 'A blank or dash for an open quote or open P&L means unavailable, not zero. Delayed stock and option quotes are not live broker marks.'],
+        keywords: ['trade number', 'account name', 'net cash', 'open pnl', 'positions', 'commissions', 'quote', 'open date', 'close date', 'execution dates'],
       },
       {
         id: 'trade-description-tags-notes', title: 'Descriptions, side, tags and trade journals',

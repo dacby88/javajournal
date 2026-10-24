@@ -42,6 +42,14 @@ test('public troubleshooting preserves CSRF and HTTPS guidance', () => {
   assert.match(text, /Do not disable/);
 });
 
+test('CSV import guide explains option descriptions and preserved broker text', () => {
+  const topic = topics.find(topic => topic.id === 'prepare-csv');
+  const text = topic.paragraphs.join(' ');
+  assert.match(text, /compact futures-option symbols/);
+  assert.match(text, /original CSV description is preserved in the execution notes/);
+  assert.ok(filterHelpSections('CBOE').flatMap(section => section.topics).some(result => result.id === 'prepare-csv'));
+});
+
 test('search is case-insensitive and searches body text and keywords', () => {
   const result = filterHelpSections('  SPLIT execution  ').flatMap(section => section.topics);
   assert.ok(result.some(topic => topic.id === 'execution-split'));

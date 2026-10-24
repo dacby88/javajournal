@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from app import app, db
-from models import Account, BrokerImportMapping
+from csv_processor import normalize_option_symbol
+from models import Account, BrokerImportMapping, Execution
 
 
 def _csv_content():
@@ -389,10 +390,89 @@ def test_tradier_style_import():
         print("PASS: tradier-style import")
 
 
+def test_compact_futures_option_symbol_normalization():
+    cases = {
+        'ESH6MN4EV6261023P28650': 'ESH6 2026-10-23 28650 P',
+        'MNQZ6MN4EV6261023P28650': 'MNQZ6 2026-10-23 28650 P',
+        'MNQZ26MN4EV6261023P28650': 'MNQZ26 2026-10-23 28650 P',
+        'MNQZ6MN4EV6261332P28650': 'MNQZ6MN4EV6261332P28650',
+    }
+    for raw_symbol, expected in cases.items():
+        assert normalize_option_symbol(raw_symbol) == expected
+
+
+def test_compact_futures_option_import_preserves_description_in_notes():
+    csv_content = (
+        'Symbol,Description,Asset Class,Side,Quantity,Price,Trade Date\n'
+        'MNQZ6MN4EV6261023P28650,"Sold 1 MNQZ6 10/23/26 Put 28650.00 @ 79.0",FOP,SELL,1,79.0,2026-10-20\n'
+        'MNQZ6MN4EV6261023P28650,,FOP,BUY,1,75.0,2026-10-21\n'
+    ).encode('utf-8')
+
+    with app.app_context():
+        db.create_all()
+        account = Account(name='Compact Futures Option Account')
+        db.session.add(account)
+        db.session.commit()
+        client = app.test_client()
+
+        create_resp = client.post('/api/broker-import-mappings', json={
+            'name': 'Compact Futures Option Mapping',
+            'column_mappings': {
+                'symbol': 'Symbol',
+                'description': 'Description',
+                'asset_class': 'Asset Class',
+                'side': 'Side',
+                'quantity': 'Quantity',
+                'price': 'Price',
+                'trade_date': 'Trade Date',
+            },
+            'parser_config': {
+                'header_row_index': 0,
+                'parse_option_details_from_symbol': True,
+            },
+        })
+        assert create_resp.status_code == 200, create_resp.data
+        mapping_id = create_resp.get_json()['data']['id']
+
+        validate_resp = client.post('/api/import/validate', data={
+            'file': (io.BytesIO(csv_content), 'compact-futures-options.csv'),
+            'account_id': account.id,
+            'broker_import_mapping_id': mapping_id,
+        }, content_type='multipart/form-data')
+        assert validate_resp.status_code == 200, validate_resp.data
+        rows = validate_resp.get_json()['data']['rows']
+        assert rows[0]['data']['Symbol'] == 'MNQZ6 2026-10-23 28650 P'
+        assert rows[0]['data']['Description'] == 'MNQZ6 2026-10-23 28650.00 Put'
+
+        import_resp = client.post('/api/import/csv', data={
+            'file': (io.BytesIO(csv_content), 'compact-futures-options.csv'),
+            'account_id': account.id,
+            'broker_import_mapping_id': mapping_id,
+        }, content_type='multipart/form-data')
+        assert import_resp.status_code == 200, import_resp.data
+        assert import_resp.get_json()['executions_added'] == 2
+
+        executions = Execution.query.filter_by(account_id=account.id).order_by(Execution.id).all()
+        assert len(executions) == 2
+        first, second = executions
+        assert first.symbol == 'MNQZ6 2026-10-23 28650 P'
+        assert first.description == 'MNQZ6 2026-10-23 28650.00 Put'
+        assert first.notes == 'Sold 1 MNQZ6 10/23/26 Put 28650.00 @ 79.0'
+        assert first.asset_class == 'FOP'
+        assert first.underlying_symbol == 'MNQZ6'
+        assert first.expiry.isoformat() == '2026-10-23'
+        assert float(first.strike) == 28650
+        assert first.put_call == 'P'
+        assert second.description == 'MNQZ6 2026-10-23 28650.00 Put'
+        assert second.notes is None
+
+
 if __name__ == '__main__':
     test_preview_endpoint()
     test_crud_endpoints()
     test_import_with_mapping_via_account()
     test_import_with_formula_value_mappings()
     test_tradier_style_import()
+    test_compact_futures_option_symbol_normalization()
+    test_compact_futures_option_import_preserves_description_in_notes()
     print("\nAll broker import mapping tests passed!")

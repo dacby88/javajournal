@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import type { Trade, Execution } from '@/types';
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from '@/lib/utils';
+import { getPositionExecutionDates } from '@/lib/tradePositionDates';
 import { 
   ArrowLeft,
   ArrowUpDown,
@@ -119,11 +120,12 @@ export function TradeDetailPage() {
     [executions]
   );
 
+  const positionExecutionDates = useMemo(() => getPositionExecutionDates(executions), [executions]);
+
   // Remaining open lots per symbol: net qty across all fills, avg price and
   // net cash from executions still marked open.
   const openPositions = useMemo(() => {
     const bySymbol = new Map<string, {
-      description: string | null;
       signedQty: number;
       openQtyAbs: number;
       openCost: number;
@@ -135,16 +137,12 @@ export function TradeDetailPage() {
       const absQty = Math.abs(exec.quantity || 0);
       const signed = (exec.side === 'BUY' ? 1 : -1) * absQty;
       const row = bySymbol.get(symbol) ?? {
-        description: null,
         signedQty: 0,
         openQtyAbs: 0,
         openCost: 0,
         openNetCash: 0,
       };
       row.signedQty += signed;
-      if (!row.description && exec.description) {
-        row.description = exec.description;
-      }
       if (exec.is_open !== false) {
         row.openQtyAbs += absQty;
         row.openCost += absQty * (exec.price || 0);
@@ -157,7 +155,7 @@ export function TradeDetailPage() {
       .filter(([, row]) => Math.abs(row.signedQty) > 1e-8)
       .map(([symbol, row]) => ({
         symbol,
-        description: row.description,
+        ...(positionExecutionDates.get(symbol) ?? { openDate: null, closeDate: null }),
         side: row.signedQty > 0 ? 'BUY' : 'SELL',
         qty: Math.abs(row.signedQty),
         avgPrice: row.openQtyAbs > 0 ? row.openCost / row.openQtyAbs : 0,
@@ -166,14 +164,13 @@ export function TradeDetailPage() {
         openPnl: null as number | null,
       }))
       .sort((a, b) => a.symbol.localeCompare(b.symbol));
-  }, [executions]);
+  }, [executions, positionExecutionDates]);
 
   // Fully closed lots per symbol (net qty back to zero). Qty/avg price come
   // from the entry executions; net cash across all executions is the
   // realized P&L for that security.
   const closedPositions = useMemo(() => {
     const bySymbol = new Map<string, {
-      description: string | null;
       signedQty: number;
       openQtyAbs: number;
       openCost: number;
@@ -186,7 +183,6 @@ export function TradeDetailPage() {
       const absQty = Math.abs(exec.quantity || 0);
       const signed = (exec.side === 'BUY' ? 1 : -1) * absQty;
       const row = bySymbol.get(symbol) ?? {
-        description: null,
         signedQty: 0,
         openQtyAbs: 0,
         openCost: 0,
@@ -195,9 +191,6 @@ export function TradeDetailPage() {
       };
       row.signedQty += signed;
       row.netCash += exec.net_cash || 0;
-      if (!row.description && exec.description) {
-        row.description = exec.description;
-      }
       if (exec.is_open !== false) {
         row.openQtyAbs += absQty;
         row.openCost += absQty * (exec.price || 0);
@@ -210,7 +203,7 @@ export function TradeDetailPage() {
       .filter(([, row]) => Math.abs(row.signedQty) <= 1e-8)
       .map(([symbol, row]) => ({
         symbol,
-        description: row.description,
+        ...(positionExecutionDates.get(symbol) ?? { openDate: null, closeDate: null }),
         side: row.openSignedQty >= 0 ? 'BUY' : 'SELL',
         qty: row.openQtyAbs,
         avgPrice: row.openQtyAbs > 0 ? row.openCost / row.openQtyAbs : 0,
@@ -218,7 +211,7 @@ export function TradeDetailPage() {
         pnl: row.netCash,
       }))
       .sort((a, b) => a.symbol.localeCompare(b.symbol));
-  }, [executions]);
+  }, [executions, positionExecutionDates]);
 
   const displayPnl = isTradeOpen
     ? (trade?.open_pnl != null ? trade.open_pnl : null)
@@ -228,7 +221,7 @@ export function TradeDetailPage() {
     if (trade?.open_positions && trade.open_positions.length > 0) {
       return trade.open_positions.map((pos) => ({
         symbol: pos.symbol,
-        description: pos.description ?? null,
+        ...(positionExecutionDates.get(pos.symbol) ?? { openDate: null, closeDate: null }),
         side: pos.side,
         qty: pos.qty,
         avgPrice: pos.avg_price,
@@ -238,7 +231,7 @@ export function TradeDetailPage() {
       }));
     }
     return openPositions;
-  }, [trade?.open_positions, openPositions]);
+  }, [trade?.open_positions, openPositions, positionExecutionDates]);
 
   // Qty totals are gross contract counts (calls and puts summed together).
   // Open P&L total is null when no position has a quote, matching the rows.
@@ -1009,8 +1002,9 @@ export function TradeDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Security Description</TableHead>
                         <TableHead>Symbol</TableHead>
+                        <TableHead>Open Date</TableHead>
+                        <TableHead>Close Date</TableHead>
                         <TableHead>Side</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead className="text-right">Avg Price</TableHead>
@@ -1022,8 +1016,9 @@ export function TradeDetailPage() {
                     <TableBody>
                       {markedOpenPositions.map((pos) => (
                         <TableRow key={pos.symbol}>
-                          <TableCell className="text-muted-foreground">{pos.description || '-'}</TableCell>
                           <TableCell className="font-medium">{pos.symbol}</TableCell>
+                          <TableCell>{pos.openDate ? formatDateUtil(pos.openDate) : '-'}</TableCell>
+                          <TableCell>{pos.closeDate ? formatDateUtil(pos.closeDate) : '-'}</TableCell>
                           <TableCell>
                             <Badge variant={pos.side === 'BUY' ? 'default' : 'secondary'}>
                               {pos.side}
@@ -1050,6 +1045,7 @@ export function TradeDetailPage() {
                     <TableFooter>
                       <TableRow>
                         <TableCell className="font-semibold">Total</TableCell>
+                        <TableCell></TableCell>
                         <TableCell></TableCell>
                         <TableCell></TableCell>
                         <TableCell className="text-right font-mono font-semibold">
@@ -1090,8 +1086,9 @@ export function TradeDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Security Description</TableHead>
                       <TableHead>Symbol</TableHead>
+                      <TableHead>Open Date</TableHead>
+                      <TableHead>Close Date</TableHead>
                       <TableHead>Side</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
                       <TableHead className="text-right">Avg Price</TableHead>
@@ -1102,8 +1099,9 @@ export function TradeDetailPage() {
                   <TableBody>
                     {closedPositions.map((pos) => (
                       <TableRow key={pos.symbol}>
-                        <TableCell className="text-muted-foreground">{pos.description || '-'}</TableCell>
                         <TableCell className="font-medium">{pos.symbol}</TableCell>
+                        <TableCell>{pos.openDate ? formatDateUtil(pos.openDate) : '-'}</TableCell>
+                        <TableCell>{pos.closeDate ? formatDateUtil(pos.closeDate) : '-'}</TableCell>
                         <TableCell>
                           <Badge variant={pos.side === 'BUY' ? 'default' : 'secondary'}>
                             {pos.side}
@@ -1127,6 +1125,7 @@ export function TradeDetailPage() {
                   <TableFooter>
                     <TableRow>
                       <TableCell className="font-semibold">Total</TableCell>
+                      <TableCell></TableCell>
                       <TableCell></TableCell>
                       <TableCell></TableCell>
                       <TableCell className="text-right font-mono font-semibold">

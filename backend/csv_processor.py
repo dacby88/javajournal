@@ -302,6 +302,8 @@ def normalize_option_symbol(symbol):
     
     Handles:
     - Compact OCC:   SYMBOLYYMMDDCPSTRIKE (e.g., MU260702C01410000)
+    - Compact futures options: UNDERLYINGCBOEYYMMDDCPSTRIKE
+      (e.g., MNQZ6MN4EV6261023P28650)
     - IB/TastyTrade: SYMBOL YYMMDD[CP]STRIKE (e.g., AMD 260529P00410000)
     - Schwab:        SYMBOL MM/DD/YYYY STRIKE [CP] (e.g., MU 05/29/2026 1400.00 C)
     
@@ -321,6 +323,17 @@ def normalize_option_symbol(symbol):
         sym = _strip_futures_prefix(sym)
         strike = _format_strike(strike_str, 1000)
         return f"{sym} {expiry.isoformat()} {strike} {cp}"
+
+    compact_futures_pattern = r'^([A-Z0-9]{2,4}\d{1,2})([A-Z0-9]{6})(\d{2})(\d{2})(\d{2})([CP])(\d+)$'
+    compact_futures_match = re.match(compact_futures_pattern, symbol)
+    if compact_futures_match:
+        sym, cboe_symbol, yy, mm, dd, cp, strike_str = compact_futures_match.groups()
+        try:
+            expiry = date(2000 + int(yy), int(mm), int(dd))
+            strike = _format_strike(strike_str, 1)
+            return f"{sym} {expiry.isoformat()} {strike} {cp}"
+        except ValueError:
+            pass
     
     # IB / TastyTrade format: SYMBOL YYMMDD[CP]STRIKE
     ib_pattern = r'^([^ ]+) (\d{2})(\d{2})(\d{2})([CP])(\d+)$'
@@ -818,9 +831,11 @@ def process_java_journal_csv(file_content, filename, account_id, selected_row_in
                 raw_symbol = str(row.get('Symbol', '')).strip()
                 symbol = normalize_option_symbol(raw_symbol)
                 description = str(row.get('Description', '')).strip()
+                notes = None
                 # Generate a consistent option description when the symbol is normalized
                 generated_desc = _generate_option_description(symbol)
                 if generated_desc:
+                    notes = description if description and description.lower() != 'nan' else None
                     description = generated_desc
                 
                 # Parse option details
@@ -919,6 +934,7 @@ def process_java_journal_csv(file_content, filename, account_id, selected_row_in
                     account_alias=account_alias,
                     symbol=symbol,
                     description=description,
+                    notes=notes,
                     asset_class=asset_class,
                     underlying_symbol=underlying,
                     strike=strike,
@@ -1237,8 +1253,10 @@ def process_schwab_csv(file_content, filename, account_id, selected_row_indices=
                 
                 # Normalize symbol to consistent format and regenerate description
                 symbol = normalize_option_symbol(symbol)
+                notes = None
                 generated_desc = _generate_option_description(symbol)
                 if generated_desc:
+                    notes = description if description and description.lower() != 'nan' else None
                     description = generated_desc
                 
                 # Extract underlying (first word of normalized symbol)
@@ -1314,6 +1332,7 @@ def process_schwab_csv(file_content, filename, account_id, selected_row_indices=
                 execution = Execution(
                     symbol=symbol,
                     description=description,
+                    notes=notes,
                     underlying_symbol=underlying,
                     asset_class=asset_class,
                     put_call=put_call,
@@ -1871,11 +1890,13 @@ def _process_csv_flexible(file_content, filename, account_id, column_mappings, p
                     account_alias = account_name
                 
                 description = str(get_col_value(row, 'description') or '').strip()
+                notes = None
                 
                 # Generate a consistent option description from the normalized symbol for options
                 if asset_class in ('OPT', 'FOP'):
                     generated_desc = _generate_option_description(symbol)
                     if generated_desc:
+                        notes = description if description and description.lower() != 'nan' else None
                         description = generated_desc
                 
                 # Check for duplicate executions
@@ -1909,6 +1930,7 @@ def _process_csv_flexible(file_content, filename, account_id, column_mappings, p
                     account_alias=account_alias,
                     symbol=symbol,
                     description=description,
+                    notes=notes,
                     asset_class=asset_class,
                     underlying_symbol=underlying,
                     strike=strike,
