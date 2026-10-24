@@ -40,13 +40,18 @@ def _opt(expiry, strike, price=1.0):
 
 
 def _rolled_spx_executions():
-    """Same 6-expiry SPX put roll that overflowed VARCHAR(200) in production."""
     return [
+        _opt(date(2026, 8, 3), 7740),
+        _opt(date(2026, 8, 4), 7740),
+        _opt(date(2026, 8, 5), 7740),
         _opt(date(2026, 8, 6), 7740),
         _opt(date(2026, 8, 7), 7740),
         _opt(date(2026, 8, 10), 7740),
+        _opt(date(2026, 8, 11), 7740),
         _opt(date(2026, 8, 12), 7745),
         _opt(date(2026, 8, 13), 7750),
+        _opt(date(2026, 8, 14), 7750),
+        _opt(date(2026, 8, 17), 7740),
         _opt(date(2026, 8, 18), 7740),
     ]
 
@@ -107,3 +112,15 @@ def test_auto_description_skips_closing_executions():
     assert '2026-08-06' in desc
     assert '2026-08-18' not in desc
     assert '7800' not in desc
+
+
+def test_single_option_description_has_no_strategy_label():
+    desc = _generate_trade_description([_opt(date(2026, 8, 6), 7740)])
+    assert desc == 'SPX 2026-08-06 7740P'
+
+
+def test_spread_description_has_no_strategy_label():
+    lower_priced_leg = _opt(date(2026, 8, 6), 7740, price=8.0)
+    higher_priced_leg = _opt(date(2026, 8, 6), 7750, price=12.0)
+    desc = _generate_trade_description([lower_priced_leg, higher_priced_leg])
+    assert desc == 'SPX 2026-08-06 7750P/7740P'

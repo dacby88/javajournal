@@ -386,15 +386,15 @@ def _determine_trade_side(entry_execs):
 
 def _generate_trade_description(executions):
     """
-    Auto-generate a trade description based on the spread structure.
-    
+    Auto-generate a trade description from its option contracts.
+
     Examples:
-        "AMD 2026-05-22 510C/500C Call Spread"
-        "SPY 2026-03-15 590P/580P Put Spread"
-        "AAPL 2026-06-18 120C/110C/100C Butterfly"
-        "XYZ 2026-05-22 115/110/105/100 Condor"
-        "XYZ 2026-05-22 200 Straddle"
-        "AMD 2026-05-22 510C/500C Call Spread + NVDA 2026-05-22 210P/200P Put Spread"
+        "AMD 2026-05-22 510C/500C"
+        "SPY 2026-03-15 590P/580P"
+        "AAPL 2026-06-18 120C/110C/100C"
+        "XYZ 2026-05-22 115C/110C/105P/100P"
+        "XYZ 2026-05-22 200C/200P"
+        "AMD 2026-05-22 510C/500C + NVDA 2026-05-22 210P/200P"
     """
     if not executions:
         return None
@@ -463,9 +463,6 @@ def _generate_group_description(underlying, expiry, options):
         key = (o['strike'], o['put_call'])
         strike_types[key] = strike_types.get(key, 0) + o['qty']
     
-    put_calls_present = set(pc for (_, pc) in strike_types.keys())
-    unique_strikes_asc = sorted(set(s for (s, _) in strike_types.keys()))
-    
     # Sort strikes by highest execution price first (regardless of buy/sell)
     strike_max_price = {}
     for o in options:
@@ -475,13 +472,7 @@ def _generate_group_description(underlying, expiry, options):
         key=lambda s: strike_max_price.get(s, 0),
         reverse=True
     )
-    
-    has_calls = 'C' in put_calls_present
-    has_puts = 'P' in put_calls_present
-    
-    # Detect spread type (uses ascending order for butterfly logic)
-    spread_type = _detect_spread_type(strike_types, unique_strikes_asc, put_calls_present)
-    
+
     # Format strike labels in descending order (highest price first)
     strike_labels = []
     for strike in unique_strikes_desc:
@@ -489,10 +480,10 @@ def _generate_group_description(underlying, expiry, options):
         for pc in strike_opts:
             suffix = 'C' if pc == 'C' else 'P'
             strike_labels.append(f"{strike:g}{suffix}")
-    
+
     strikes_str = '/'.join(strike_labels)
-    
-    return f"{underlying} {expiry_str} {strikes_str} {spread_type}"
+
+    return f"{underlying} {expiry_str} {strikes_str}"
 
 
 def _detect_spread_type(strike_types, unique_strikes, put_calls_present):

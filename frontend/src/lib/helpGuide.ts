@@ -235,7 +235,7 @@ export const helpSections: HelpSection[] = [
       },
       {
         id: 'trade-description-tags-notes', title: 'Descriptions, side, tags and trade journals',
-        paragraphs: ['Trade descriptions can be generated from symbols, expiries, strikes and spread structure. Editing a description enables the override that preserves the custom name against automatic regeneration.', 'Trade tags classify a trade for filtering and analysis. A trade journal stores notes about that particular position, separately from the calendar’s daily journal.'],
+        paragraphs: ['Trade descriptions can be generated from symbols, expiries, strikes and option types without strategy labels such as “Single Option” or “Call Spread.” Editing a description enables the override that preserves the custom name against automatic regeneration.', 'Trade tags classify a trade for filtering and analysis. A trade journal stores notes about that particular position, separately from the calendar’s daily journal.'],
         steps: ['Use the description edit control, enter the name and save it.', 'Check Override auto-description when you want to preserve a custom description; turning it off allows future automatic updates.', 'Use the side control to correct LONG/SHORT classification when appropriate.', 'Edit tags and add trade-journal content, then explicitly save the journal.', 'Review the resulting trade after changing linked executions or recalculating it.'],
         tips: ['Changing a descriptive field does not submit an order or change the actual broker position.', 'A trade number is a journal record identifier, not necessarily the broker’s order or execution ID.'],
         keywords: ['description', 'name', 'override', 'long', 'short', 'journal', 'notes', 'tags'],

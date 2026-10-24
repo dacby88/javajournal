@@ -549,7 +549,7 @@ def test_combine_auto_names_when_no_trade_overrides():
         assert body['data']['override_auto_description'] is False
         assert body['data']['description'] != 'Old A'
         assert body['data']['description'] != 'Old B'
-        assert 'Single Option' in body['data']['description']
+        assert body['data']['description'] == 'SPX 2026-08-06 7740P + SPX 2026-08-18 7740P'
 
 
 def test_assign_skips_closing_execution_in_description():
