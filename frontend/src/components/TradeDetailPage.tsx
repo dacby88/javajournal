@@ -523,9 +523,14 @@ export function TradeDetailPage() {
     try {
       const response = await api.updateTrade(parseInt(tradeId), {
         side: newSide,
+        override_auto_description: true,
       });
       if (response.success) {
-        setTrade(prev => prev ? { ...prev, side: newSide } : null);
+        setTrade(prev => prev ? {
+          ...prev,
+          side: response.data.side,
+          override_auto_description: response.data.override_auto_description,
+        } : null);
       } else {
         setError(response.message || 'Failed to update side');
       }
@@ -948,9 +953,9 @@ export function TradeDetailPage() {
                     checked={!!trade?.override_auto_description}
                     onCheckedChange={(checked) => handleToggleOverride(checked === true)}
                     disabled={savingOverride || !trade}
-                    aria-label="Override auto description"
+                    aria-label="Override auto description and side"
                   />
-                  Override auto description
+                  Override auto description & side
                 </Label>
               </div>
             </CardHeader>

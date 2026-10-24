@@ -50,13 +50,15 @@ test('CSV import guide explains option descriptions and preserved broker text', 
   assert.ok(filterHelpSections('CBOE').flatMap(section => section.topics).some(result => result.id === 'prepare-csv'));
 });
 
-test('trade description guide explains that automatic names omit strategy labels', () => {
+test('trade description guide explains automatic names and shared side overrides', () => {
   const topic = topics.find(topic => topic.id === 'trade-description-tags-notes');
   const text = topic.paragraphs.join(' ');
   assert.match(text, /symbols, expiries, strikes and option types/);
   assert.match(text, /without strategy labels/);
   assert.match(text, /Single Option/);
   assert.match(text, /Call Spread/);
+  assert.match(text, /manually changing LONG\/SHORT/);
+  assert.match(text, /preserves the custom name and selected direction/);
 });
 
 test('search is case-insensitive and searches body text and keywords', () => {

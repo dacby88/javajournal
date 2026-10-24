@@ -482,12 +482,6 @@ def toggle_execution_open(execution_id):
                 trade.entry_execution_ids = json.dumps(entry_ids)
                 trade.exit_execution_ids = json.dumps(exit_ids)
                 
-                # Recalc trade side from first open execution
-                if entry_ids:
-                    open_execs = [e for e in execs if e.is_open]
-                    open_execs.sort(key=lambda x: (x.exec_datetime or datetime.min, -float(x.price or 0)))
-                    trade.side = 'LONG' if open_execs[0].side == 'BUY' else 'SHORT'
-                
                 # Recalculate trade aggregate fields (is_open, open_qty, P&L, etc.)
                 # reclassify=False preserves manual open/close toggles
                 result = _recalculate_trade_fields(trade, execs, reclassify=False)
@@ -1061,13 +1055,14 @@ def update_trade(trade_id):
         description_changed = (
             'description' in data and data['description'] != stored_description
         )
+        side_changed = 'side' in data and data['side'] != trade.side
 
         allowed_fields = ['notes', 'side', 'description', 'override_auto_description']
         for field in allowed_fields:
             if field in data:
                 setattr(trade, field, data[field])
 
-        if description_changed:
+        if description_changed or side_changed:
             trade.override_auto_description = True
 
         db.session.commit()
@@ -1501,7 +1496,8 @@ def _recalculate_trade_fields(trade, executions, reclassify=True):
     
     Updates the trade object in-place with:
     - entry_price, exit_price (weighted from all legs in each group)
-    - side, quantity (from defining leg - highest price in entry group)
+    - quantity (from the entry executions)
+    - side (from the defining leg unless the manual override is enabled)
     - net_pnl, gross_pnl, total_commissions (from real execution net_cash)
     - entry_date, exit_date (from real execution datetimes)
     - entry_execution_ids, exit_execution_ids (classified by position tracking)
@@ -1620,12 +1616,12 @@ def _recalculate_trade_fields(trade, executions, reclassify=True):
     trade.entry_date = earliest_entry.date() if earliest_entry else earliest_exec.trade_date
     trade.entry_price = avg_entry_price
     trade.quantity = quantity
-    trade.side = side
+    if not trade.override_auto_description or not trade.side:
+        trade.side = side
     trade.entry_execution_ids = json.dumps(entry_exec_ids)
     trade.exit_execution_ids = json.dumps(exit_exec_ids)
     trade.account_id = earliest_exec.account_id
-    
-    # Auto-generate description unless the user locked it
+
     if not trade.override_auto_description:
         auto_description = _generate_trade_description(executions)
         if auto_description:
@@ -1733,7 +1729,7 @@ def combine_trades():
         else:
             combined_trade = Trade()
 
-        # If any source trade locked its name, keep that name and append the others.
+        # A shared override preserves the first locked trade's name and appends the others.
         if any(t.override_auto_description for t in trades):
             combined_trade.override_auto_description = True
             by_id = {t.id: t for t in trades}
@@ -2217,7 +2213,8 @@ def assign_executions_to_trade(trade_id):
         trade.entry_price = avg_entry_price
         trade.exit_price = avg_exit_price if total_exit_qty > 0 else trade.exit_price
         trade.quantity = quantity
-        trade.side = side
+        if not trade.override_auto_description or not trade.side:
+            trade.side = side
         trade.gross_pnl = gross_pnl
         trade.total_commissions = total_commissions
         trade.net_pnl = net_pnl

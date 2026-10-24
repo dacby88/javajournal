@@ -180,7 +180,7 @@ def _make_spread_executions(account_id):
     return [entry1, entry2]
 
 
-def test_recalculate_skips_description_when_override_true():
+def test_recalculate_skips_description_and_side_when_override_true():
     with _ctx():
         db.create_all()
         account = _seed_account()
@@ -188,6 +188,7 @@ def test_recalculate_skips_description_when_override_true():
         trade = _make_trade(
             account.id,
             description='Keep this name',
+            side='SHORT',
             override_auto_description=True,
             entry_execution_ids=f'[{execs[0].id},{execs[1].id}]',
         )
@@ -198,10 +199,11 @@ def test_recalculate_skips_description_when_override_true():
         result = _recalculate_trade_fields(trade, execs)
         assert result['success'] is True
         assert trade.description == 'Keep this name'
+        assert trade.side == 'SHORT'
         assert trade.override_auto_description is True
 
 
-def test_recalculate_auto_names_when_override_false():
+def test_recalculate_auto_names_and_side_when_override_false():
     with _ctx():
         db.create_all()
         account = _seed_account()
@@ -209,6 +211,7 @@ def test_recalculate_auto_names_when_override_false():
         trade = _make_trade(
             account.id,
             description='Old name',
+            side='SHORT',
             override_auto_description=False,
             entry_execution_ids=f'[{execs[0].id},{execs[1].id}]',
         )
@@ -220,7 +223,41 @@ def test_recalculate_auto_names_when_override_false():
         assert result['success'] is True
         assert trade.description != 'Old name'
         assert trade.description
+        assert trade.side == 'LONG'
         assert trade.override_auto_description is False
+
+
+def test_manual_side_change_enables_override_and_survives_recalculate_endpoint():
+    with _ctx():
+        db.create_all()
+        account = _seed_account()
+        execs = _make_spread_executions(account.id)
+        trade = _make_trade(
+            account.id,
+            side='LONG',
+            override_auto_description=False,
+            entry_execution_ids=f'[{execs[0].id},{execs[1].id}]',
+        )
+        for e in execs:
+            e.matched_trade_id = trade.id
+        db.session.commit()
+        client = app.test_client()
+
+        update_response = client.put(
+            f'/api/trades/{trade.id}',
+            json={'side': 'SHORT'},
+        )
+        assert update_response.status_code == 200, update_response.data
+        assert update_response.get_json()['data']['override_auto_description'] is True
+
+        recalc_response = client.post(
+            f'/api/trades/{trade.id}/recalculate-pnl',
+            json={'recalculate_stats': False},
+        )
+        assert recalc_response.status_code == 200, recalc_response.data
+        db.session.refresh(trade)
+        assert trade.side == 'SHORT'
+        assert trade.override_auto_description is True
 
 
 def test_manual_create_with_description_starts_locked():
