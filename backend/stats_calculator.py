@@ -3,7 +3,7 @@ import pandas as pd
 import math
 from datetime import datetime, timedelta
 from models import db, Trade, Execution, DailyStats, OverallStats, HourlyStats, Account
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 
 def safe_float(value, default=0):
@@ -62,7 +62,13 @@ def calculate_overall_stats(account_id=None):
         return None
     
     # Convert to DataFrame for easier calculations
-    df = pd.DataFrame([t.to_dict() for t in trades])
+    df = pd.DataFrame([{
+        'net_pnl': float(t.net_pnl or 0),
+        'gross_pnl': float(t.gross_pnl or 0),
+        'total_commissions': float(t.total_commissions or 0),
+        'entry_date': t.entry_date,
+        'exit_date': t.exit_date,
+    } for t in trades])
     df['net_pnl'] = df['net_pnl'].astype(float)
     df['gross_pnl'] = df['gross_pnl'].astype(float)
     
@@ -235,7 +241,13 @@ def calculate_daily_stats(account_id=None, *, only_account=False):
     closed_trades = closed_query.all()
 
     if closed_trades:
-        df = pd.DataFrame([t.to_dict() for t in closed_trades])
+        df = pd.DataFrame([{
+            'exit_date': t.exit_date,
+            'net_pnl': float(t.net_pnl or 0),
+            'gross_pnl': float(t.gross_pnl or 0),
+            'total_commissions': float(t.total_commissions or 0),
+            'account_id': t.account_id,
+        } for t in closed_trades])
         df['exit_date'] = pd.to_datetime(df['exit_date'])
         df['net_pnl'] = df['net_pnl'].astype(float)
         df['gross_pnl'] = df['gross_pnl'].astype(float)
@@ -326,6 +338,75 @@ def calculate_daily_stats(account_id=None, *, only_account=False):
     return [d.to_dict() for d in result_query.order_by(DailyStats.date.desc()).all()]
 
 
+def get_daily_stats_scope(trades):
+    """Return the account/date rows affected by the trades' current states."""
+    scope = set()
+    for trade in trades:
+        if trade.is_open is True:
+            stat_date = trade.entry_date
+        elif trade.is_open is False:
+            stat_date = trade.exit_date
+        else:
+            continue
+        if stat_date is not None:
+            scope.add((trade.account_id, stat_date))
+    return scope
+
+
+def recalculate_daily_stats_for_changes(before_scope, after_scope):
+    """Refresh only daily-stat rows affected by a trade mutation."""
+    for account_id, stat_date in sorted(
+        before_scope | after_scope,
+        key=lambda item: (item[0] is not None, item[0] or 0, item[1]),
+    ):
+        closed = db.session.query(
+            func.count(Trade.id).label('total_trades'),
+            func.sum(case((Trade.net_pnl > 0, 1), else_=0)).label('winning_trades'),
+            func.sum(case((Trade.net_pnl < 0, 1), else_=0)).label('losing_trades'),
+            func.sum(case((Trade.net_pnl == 0, 1), else_=0)).label('break_even_trades'),
+            func.sum(Trade.gross_pnl).label('gross_pnl'),
+            func.sum(Trade.net_pnl).label('net_pnl'),
+            func.sum(Trade.total_commissions).label('total_commission'),
+            func.max(Trade.net_pnl).label('largest_profit'),
+            func.min(Trade.net_pnl).label('largest_loss'),
+            func.avg(Trade.net_pnl).label('avg_trade_pnl'),
+        ).filter(
+            Trade.account_id == account_id,
+            Trade.is_open == False,
+            Trade.exit_date == stat_date,
+        ).one()
+        open_count = Trade.query.filter(
+            Trade.account_id == account_id,
+            Trade.is_open == True,
+            Trade.entry_date == stat_date,
+        ).count()
+        closed_count = int(closed.total_trades or 0)
+
+        daily_stat = DailyStats.query.filter_by(
+            date=stat_date,
+            account_id=account_id,
+        ).first()
+        if closed_count == 0 and open_count == 0:
+            if daily_stat is not None:
+                db.session.delete(daily_stat)
+            continue
+
+        if daily_stat is None:
+            daily_stat = DailyStats(date=stat_date, account_id=account_id)
+            db.session.add(daily_stat)
+
+        daily_stat.total_trades = closed_count + open_count
+        daily_stat.winning_trades = int(closed.winning_trades or 0)
+        daily_stat.losing_trades = int(closed.losing_trades or 0)
+        daily_stat.break_even_trades = int(closed.break_even_trades or 0)
+        daily_stat.gross_pnl = float(closed.gross_pnl or 0)
+        daily_stat.net_pnl = float(closed.net_pnl or 0)
+        daily_stat.total_commission = float(closed.total_commission or 0)
+        daily_stat.largest_profit = float(closed.largest_profit or 0)
+        daily_stat.largest_loss = float(closed.largest_loss or 0)
+        daily_stat.avg_trade_pnl = float(closed.avg_trade_pnl or 0)
+
+
 def calculate_hourly_stats():
     """Calculate statistics by hour of day from executions"""
     executions = Execution.query.filter(Execution.exec_datetime.isnot(None)).all()
@@ -333,7 +414,10 @@ def calculate_hourly_stats():
     if not executions:
         return []
     
-    df = pd.DataFrame([e.to_dict() for e in executions])
+    df = pd.DataFrame([{
+        'net_cash': float(e.net_cash or 0),
+        'exec_datetime': e.exec_datetime,
+    } for e in executions])
     df['net_cash'] = df['net_cash'].astype(float)
     df['exec_datetime'] = pd.to_datetime(df['exec_datetime'])
     df['hour'] = df['exec_datetime'].dt.hour
@@ -394,7 +478,13 @@ def calculate_daily_stats_for_account(account_id):
     ).all()
     
     if closed_trades:
-        df = pd.DataFrame([t.to_dict() for t in closed_trades])
+        df = pd.DataFrame([{
+            'exit_date': t.exit_date,
+            'net_pnl': float(t.net_pnl or 0),
+            'gross_pnl': float(t.gross_pnl or 0),
+            'total_commissions': float(t.total_commissions or 0),
+            'account_id': t.account_id,
+        } for t in closed_trades])
         df['exit_date'] = pd.to_datetime(df['exit_date'])
         df['net_pnl'] = df['net_pnl'].astype(float)
         df['gross_pnl'] = df['gross_pnl'].astype(float)
@@ -491,7 +581,10 @@ def calculate_hourly_stats_for_account(account_id):
     if not executions:
         return []
     
-    df = pd.DataFrame([e.to_dict() for e in executions])
+    df = pd.DataFrame([{
+        'net_cash': float(e.net_cash or 0),
+        'exec_datetime': e.exec_datetime,
+    } for e in executions])
     df['net_cash'] = df['net_cash'].astype(float)
     df['exec_datetime'] = pd.to_datetime(df['exec_datetime'])
     df['hour'] = df['exec_datetime'].dt.hour
@@ -540,7 +633,13 @@ def calculate_overall_stats_for_account(account_id):
     if not trades:
         return None
     
-    df = pd.DataFrame([t.to_dict() for t in trades])
+    df = pd.DataFrame([{
+        'net_pnl': float(t.net_pnl or 0),
+        'gross_pnl': float(t.gross_pnl or 0),
+        'total_commissions': float(t.total_commissions or 0),
+        'entry_date': t.entry_date,
+        'exit_date': t.exit_date,
+    } for t in trades])
     df['net_pnl'] = df['net_pnl'].astype(float)
     df['gross_pnl'] = df['gross_pnl'].astype(float)
     

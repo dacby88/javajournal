@@ -227,7 +227,7 @@ class Trade(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    def to_dict(self):
+    def to_dict(self, executions=None):
         # Get account name
         account_name = self.account.name if self.account else None
         
@@ -235,13 +235,16 @@ class Trade(db.Model):
         entry_time = None
         exit_time = None
         net_cash = 0.0
+        executions_by_id = {e.id: e for e in executions} if executions is not None else None
 
         if self.entry_execution_ids:
             try:
                 entry_ids = json.loads(self.entry_execution_ids)
                 if entry_ids:
-                    # Get earliest entry execution time
-                    entry_execs = Execution.query.filter(Execution.id.in_(entry_ids)).all()
+                    if executions_by_id is None:
+                        entry_execs = Execution.query.filter(Execution.id.in_(entry_ids)).all()
+                    else:
+                        entry_execs = [executions_by_id[eid] for eid in entry_ids if eid in executions_by_id]
                     if entry_execs:
                         earliest = min((e.exec_datetime for e in entry_execs if e.exec_datetime), default=None)
                         if earliest:
@@ -254,8 +257,10 @@ class Trade(db.Model):
             try:
                 exit_ids = json.loads(self.exit_execution_ids)
                 if exit_ids:
-                    # Get latest exit execution time
-                    exit_execs = Execution.query.filter(Execution.id.in_(exit_ids)).all()
+                    if executions_by_id is None:
+                        exit_execs = Execution.query.filter(Execution.id.in_(exit_ids)).all()
+                    else:
+                        exit_execs = [executions_by_id[eid] for eid in exit_ids if eid in executions_by_id]
                     if exit_execs:
                         latest = max((e.exec_datetime for e in exit_execs if e.exec_datetime), default=None)
                         if latest:
@@ -296,6 +301,40 @@ class Trade(db.Model):
             'account_name': account_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+
+def trades_to_dict(trades):
+    """Serialize trades with one execution query for the entire collection."""
+    trades = list(trades)
+    execution_ids_by_trade = {}
+    all_execution_ids = set()
+    for trade in trades:
+        execution_ids = set()
+        for raw_ids in (trade.entry_execution_ids, trade.exit_execution_ids):
+            if not raw_ids:
+                continue
+            try:
+                execution_ids.update(json.loads(raw_ids))
+            except (TypeError, ValueError):
+                pass
+        execution_ids_by_trade[trade.id] = execution_ids
+        all_execution_ids.update(execution_ids)
+
+    executions_by_id = {}
+    if all_execution_ids:
+        executions_by_id = {
+            execution.id: execution
+            for execution in Execution.query.filter(Execution.id.in_(all_execution_ids)).all()
+        }
+
+    return [
+        trade.to_dict([
+            executions_by_id[eid]
+            for eid in execution_ids_by_trade[trade.id]
+            if eid in executions_by_id
+        ])
+        for trade in trades
+    ]
 
 
 class DailyStats(db.Model):

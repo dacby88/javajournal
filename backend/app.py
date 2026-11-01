@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func, or_, text
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 import os
 import re
@@ -13,8 +13,11 @@ import io
 import pandas as pd
 import numpy as np
 
-from models import db, Execution, Trade, Position, DailyStats, OverallStats, HourlyStats, Tag, trade_tags, Account, ImportHistory, BrokerFormat, BrokerImportMapping, DailyJournal, EventTag
-from stats_calculator import recalculate_all_stats, calculate_overall_stats, calculate_daily_stats, compute_sharpe_ratio
+from models import db, Execution, Trade, Position, DailyStats, HourlyStats, Tag, trade_tags, Account, ImportHistory, BrokerFormat, BrokerImportMapping, DailyJournal, EventTag, trades_to_dict
+from stats_calculator import (
+    recalculate_all_stats, calculate_daily_stats, compute_sharpe_ratio,
+    get_daily_stats_scope, recalculate_daily_stats_for_changes,
+)
 from csv_processor import (
     process_java_journal_csv, process_executions_into_trades, process_csv_with_format,
     _generate_trade_description, _generate_group_description, _detect_spread_type,
@@ -100,8 +103,7 @@ def get_executions():
         sort_by = request.args.get('sort_by', 'trade_date')
         sort_order = request.args.get('sort_order', 'desc')
         
-        # Join with Account to get account_name
-        query = db.session.query(Execution).outerjoin(Account, Execution.account_id == Account.id)
+        query = db.session.query(Execution).options(joinedload(Execution.account))
         
         # Handle matched filter
         app.logger.debug(f"DEBUG get_executions: matched param = {matched!r}")
@@ -169,14 +171,7 @@ def get_executions():
         total = query.count()
         executions = query.limit(limit).offset(offset).all()
         
-        # Build result with account_name manually added from the joined Account
-        data = []
-        for e in executions:
-            exec_dict = e.to_dict()
-            # If account_name is still None but we have an account from the outerjoin, use it
-            if not exec_dict.get('account_name') and hasattr(e, 'account') and e.account:
-                exec_dict['account_name'] = e.account.name
-            data.append(exec_dict)
+        data = [e.to_dict() for e in executions]
         
         return jsonify({
             'success': True,
@@ -771,10 +766,8 @@ def combine_executions_into_trade():
             db.session.rollback()
             return jsonify({'success': False, 'error': recalc.get('error') or 'Failed to calculate trade'}), 400
 
+        recalculate_daily_stats_for_changes(set(), get_daily_stats_scope([trade]))
         db.session.commit()
-        
-        # Recalculate stats
-        recalculate_all_stats()
         
         if trade.is_open:
             message = f'Created open trade #{trade.id} with {len(executions)} execution(s)'
@@ -990,7 +983,10 @@ def get_trades():
             trade_ids = filtered_trade_ids
         
         # Build final query with filtered IDs
-        final_query = Trade.query.filter(Trade.id.in_(trade_ids))
+        final_query = Trade.query.options(
+            joinedload(Trade.account),
+            selectinload(Trade.tags_list),
+        ).filter(Trade.id.in_(trade_ids))
         
         # Apply sorting
         sort_column = getattr(Trade, sort_by, Trade.exit_date)
@@ -1008,13 +1004,11 @@ def get_trades():
             for execution in Execution.query.filter(Execution.matched_trade_id.in_(open_ids)).all():
                 execs_by_trade.setdefault(execution.matched_trade_id, []).append(execution)
 
-        payload = []
-        for trade in trades:
-            data = trade.to_dict()
+        payload = trades_to_dict(trades)
+        for trade, data in zip(trades, payload):
             if trade.is_open:
                 mtm = _mark_open_trade(trade, execs_by_trade.get(trade.id, []))
                 data['open_pnl'] = mtm['open_pnl']
-            payload.append(data)
 
         return jsonify({
             'success': True,
@@ -1676,6 +1670,8 @@ def combine_trades():
         if len(account_ids) > 1:
             return jsonify({'success': False, 'error': 'All trades must be from the same account'}), 400
 
+        before_stats_scope = get_daily_stats_scope(trades)
+
         # Identify manual trades (trades with no executions)
         manual_trades = []
         trades_with_execs = []
@@ -1837,10 +1833,11 @@ def combine_trades():
         if all_tag_ids:
             combined_trade.tags_list = Tag.query.filter(Tag.id.in_(all_tag_ids)).all()
         
+        recalculate_daily_stats_for_changes(
+            before_stats_scope,
+            get_daily_stats_scope([combined_trade]),
+        )
         db.session.commit()
-        
-        # Recalculate stats
-        recalculate_all_stats()
         
         return jsonify({
             'success': True,
@@ -1942,7 +1939,7 @@ def uncombine_trade(trade_id):
         return jsonify({
             'success': True,
             'message': f'Successfully uncombined trade #{trade_id} into {len(restored_trades)} original trades',
-            'data': [t.to_dict() for t in restored_trades]
+            'data': trades_to_dict(restored_trades)
         })
         
     except Exception as e:
@@ -2113,7 +2110,8 @@ def assign_executions_to_trade(trade_id):
         trade = db.session.get(Trade, trade_id)
         if not trade:
             return jsonify({'success': False, 'error': 'Trade not found'}), 404
-        
+
+        before_stats_scope = get_daily_stats_scope([trade])
         data = request.json or {}
         execution_ids = data.get('execution_ids', [])
         
@@ -2247,10 +2245,11 @@ def assign_executions_to_trade(trade_id):
         if not trade.is_open:
             trade.exit_date = max(exit_dates).date() if exit_dates else trade.exit_date
 
+        recalculate_daily_stats_for_changes(
+            before_stats_scope,
+            get_daily_stats_scope([trade]),
+        )
         db.session.commit()
-        
-        # Recalculate stats
-        recalculate_all_stats()
         
         return jsonify({
             'success': True,
@@ -2579,12 +2578,8 @@ def validate_csv():
 def get_overall_stats():
     """Get overall trading statistics"""
     try:
-        stats = OverallStats.query.first()
-        if not stats:
-            stats_data = calculate_overall_stats()
-        else:
-            stats_data = stats.to_dict()
-        
+        trades = Trade.query.filter(Trade.is_open == False).all()
+        stats_data = calculate_overall_stats_filtered(trades) if trades else get_default_stats()
         return jsonify({'success': True, 'data': stats_data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -2979,7 +2974,10 @@ def get_dashboard_data():
             hourly_stats = calculate_hourly_stats_filtered(account_ids, None, None)
         
         # Recent trades (filtered by date range and accounts)
-        recent_trades = trade_query.order_by(Trade.exit_date.desc()).limit(10).all()
+        recent_trades = trade_query.options(
+            joinedload(Trade.account),
+            selectinload(Trade.tags_list),
+        ).order_by(Trade.exit_date.desc()).limit(10).all()
         
         # Recent executions (filtered by date range and accounts)
         # Include records where account_id matches OR account_id is NULL (for legacy data)
@@ -2993,7 +2991,9 @@ def get_dashboard_data():
         exec_account_filter = _account_filter(Execution.account_id, account_ids)
         if exec_account_filter is not None:
             exec_query = exec_query.filter(exec_account_filter)
-        recent_executions = exec_query.order_by(Execution.trade_date.desc()).limit(10).all()
+        recent_executions = exec_query.options(
+            joinedload(Execution.account),
+        ).order_by(Execution.trade_date.desc()).limit(10).all()
         
         # Get the last execution date for the selected account(s)
         last_exec_query = db.session.query(func.max(Execution.trade_date).label('max_date'))
@@ -3144,12 +3144,22 @@ def get_dashboard_data():
             )
             if trade_account_filter is not None:
                 open_trade_query = open_trade_query.filter(trade_account_filter)
-            open_trade_objs = open_trade_query.all()
+            open_trade_objs = open_trade_query.options(
+                selectinload(Trade.tags_list),
+            ).all()
+            open_execs_by_trade = {}
+            open_trade_ids = [trade.id for trade in open_trade_objs]
+            if open_trade_ids:
+                open_executions = Execution.query.filter(
+                    Execution.matched_trade_id.in_(open_trade_ids),
+                ).all()
+                for execution in open_executions:
+                    open_execs_by_trade.setdefault(execution.matched_trade_id, []).append(execution)
 
             # Use trade's own fields directly - they are already correctly set
             # by csv_processor.py when the trade was created
             for trade in open_trade_objs:
-                mtm = _mark_open_trade(trade)
+                mtm = _mark_open_trade(trade, open_execs_by_trade.get(trade.id, []))
                 open_positions.append({
                     'id': trade.id,
                     'symbol': trade.symbol,
@@ -3218,7 +3228,7 @@ def get_dashboard_data():
                 'daily': [d.to_dict() for d in daily_stats],
                 'calendar': calendar_data,
                 'hourly': hourly_stats,
-                'recent_trades': [t.to_dict() for t in recent_trades],
+                'recent_trades': trades_to_dict(recent_trades),
                 'recent_executions': [e.to_dict() for e in recent_executions],
                 'tag_pnl': tag_pnl,
                 'duration_pnl': duration_pnl,
@@ -3969,7 +3979,10 @@ def calculate_hourly_stats_filtered(account_ids=None, start_date=None, end_date=
         if not executions:
             return []
         
-        df = pd.DataFrame([e.to_dict() for e in executions])
+        df = pd.DataFrame([{
+            'net_cash': float(e.net_cash or 0),
+            'exec_datetime': e.exec_datetime,
+        } for e in executions])
         df['net_cash'] = df['net_cash'].astype(float)
         df['exec_datetime'] = pd.to_datetime(df['exec_datetime'])
         df['hour'] = df['exec_datetime'].dt.hour
